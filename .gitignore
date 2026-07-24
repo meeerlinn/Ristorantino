@@ -23,6 +23,9 @@ staticfiles/
 .idea/
 *.swp
 
+# Claude Code
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
