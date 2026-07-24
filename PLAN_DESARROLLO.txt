@@ -1,0 +1,275 @@
+================================================================================
+RISTORANTINO — PLAN DE DESARROLLO
+================================================================================
+Sistema de gestión de restaurante | Django 6 + PostgreSQL + Bootstrap 5.3
+================================================================================
+
+--------------------------------------------------------------------------------
+ESTADO ACTUAL — LO QUE YA FUNCIONA
+--------------------------------------------------------------------------------
+
+  [OK] Login / Autenticación
+  [OK] Salón y gestión de mesas (estados: Libre / Ocupada / Reservada / Sucia)
+  [OK] Comanda — tomar pedido con AJAX (agregar/quitar productos)
+  [OK] Monitor de cocina — cola FIFO (Pendiente → Cocina → Listo)
+  [OK] Panel Admin Django — todos los modelos registrados
+
+  MODELOS EXISTENTES SIN PANTALLAS OPERACIONALES:
+    - Caja, Arqueo
+    - TipoDocumento, Timbrado, CajaTimbrado
+    - DocumentoTributario, PedidoDocumento
+    - (Reservacion no existe aún en el modelo)
+
+--------------------------------------------------------------------------------
+GAPS EN EL MODELO DE DATOS (hacer ANTES de nuevas vistas)
+--------------------------------------------------------------------------------
+
+  [ ] Agregar a Pedido:
+        - metodo_pago  (CharField: 'Efectivo' / 'Tarjeta' / 'QR' / 'Mixto')
+        - descuento    (DecimalField, default=0)
+
+  [ ] Agregar a DocumentoTributario:
+        - metodo_pago       (CharField, espejo del pedido)
+        - numero_secuencial (IntegerField, autoincremental por CajaTimbrado)
+
+  [ ] Nuevo modelo Reservacion:
+        - mesa               (FK → Mesa)
+        - cliente            (FK → Cliente)
+        - empleado           (FK → User)
+        - fecha_reserva      (DateTimeField) — cuándo es la reserva
+        - fecha_registro     (DateTimeField, auto_now_add)
+        - cantidad_personas  (IntegerField)
+        - observaciones      (TextField, blank=True)
+        - estado             (CharField: Confirmada / Cancelada / Completada)
+
+  [ ] Índices de base de datos:
+        - Pedido.fecha_apertura
+        - FlujoEstado.timestamp
+        - DocumentoTributario compuesto (arqueo, estado)
+
+  COMANDO: python manage.py makemigrations && python manage.py migrate
+
+================================================================================
+FASE 1 — COMPLETAR EL FLUJO DE CAJA (PRIORITARIO)
+================================================================================
+
+  OBJETIVO: Que el cajero pueda abrir la caja, cobrar mesas,
+            emitir facturas y cerrar la caja.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 1.1 — Pantalla: Gestión de Caja
+  ─────────────────────────────────────────────────────────────────────────────
+      URL: /caja/
+      Vista: gestion_caja(request)
+
+      FUNCIONALIDADES:
+        - Muestra el arqueo activo del usuario (si existe)
+        - Si no hay arqueo activo: formulario para abrir uno (monto_apertura)
+        - Botón "Abrir Caja" → POST /caja/abrir/ → crea Arqueo(estado='Abierto')
+        - Botón "Cerrar Caja" → POST /caja/cerrar/<arqueo_id>/
+            → pide monto_cierre_real
+            → calcula diferencia_arqueo
+            → cierra el arqueo (estado='Cerrado', fecha_cierre=now())
+
+      DATOS EN PANTALLA (tiempo real del turno activo):
+        - Total vendido (suma DocumentoTributario del arqueo)
+        - Cantidad de facturas emitidas
+        - Monto esperado en caja vs. monto real ingresado
+        - Diferencia (sobrante/faltante)
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 1.2 — Pantalla: Cobro de Mesa y Facturación
+  ─────────────────────────────────────────────────────────────────────────────
+      URL: /pedido/<id>/cobrar/
+      Vista: cobrar_pedido(request, pedido_id)
+      Permiso: Solo rol 'Cajero'
+
+      FLUJO:
+        1. Muestra resumen del pedido (items, subtotal, descuento, total)
+        2. Permite buscar/seleccionar cliente (por RUC/CI via AJAX)
+           o usar cliente genérico (RUC=0)
+        3. Selecciona método de pago (Efectivo / Tarjeta / QR / Mixto)
+        4. Al confirmar:
+             → Crea DocumentoTributario (calcula IVA 10% alimentos)
+             → Crea PedidoDocumento (vincula pedido ↔ documento)
+             → Actualiza Arqueo.monto_cierre_sistema += total
+             → Actualiza Pedido.estado_pago = 'Pagado'
+             → Actualiza Pedido.fecha_cierre = now()
+             → Cambia Mesa.estado = 'Sucia'
+        5. Redirige al salón con mensaje de confirmación
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 1.3 — Completar estado "Entregado" en cocina
+  ─────────────────────────────────────────────────────────────────────────────
+      PROBLEMA: La cadena Pendiente → Cocina → Listo existe pero "Entregado"
+                no se marca en ningún lugar.
+
+      CAMBIOS:
+        - En comanda.html: mostrar items con estado 'Listo' con badge verde
+        - Agregar botón "Entregar" por item → POST cambiar_estado 'Entregado'
+        - El mozo confirma la entrega al cliente desde su pantalla
+        - Esto completa el ciclo cocina → mesa → cliente
+
+================================================================================
+FASE 2 — DASHBOARD DE KPIs
+================================================================================
+
+  OBJETIVO: Panel analítico para administrador con métricas clave del negocio.
+
+  URL: /kpis/
+  Vista: dashboard_kpis(request)
+  Permiso: Solo roles 'Cajero' / Administrador
+
+  FILTRO TEMPORAL:
+    - Botones rápidos: Hoy / Esta semana / Este mes
+    - Selector de rango personalizado (fecha desde / fecha hasta)
+    - Endpoint AJAX: GET /kpis/datos/?desde=X&hasta=Y  → JSON con todos los datos
+    - Los gráficos se actualizan sin reload de página
+
+  ─────────────────────────────────────────────────────────────────────────────
+  WIDGETS DE RESUMEN (tarjetas superiores)
+  ─────────────────────────────────────────────────────────────────────────────
+
+    [ ] Total de ventas del período
+          → suma de DocumentoTributario.monto_total (estado='Vigente')
+
+    [ ] Cantidad de pedidos cerrados
+          → Pedido.filter(estado_pago='Pagado', fecha en rango)
+
+    [ ] Ticket promedio
+          → total_ventas / cantidad_pedidos
+
+    [ ] Margen bruto estimado
+          → suma de PedidoDetalle.cantidad * (precio_historico - producto.costo_insumo)
+
+  ─────────────────────────────────────────────────────────────────────────────
+  GRÁFICOS (usar Chart.js — sin dependencias extra)
+  ─────────────────────────────────────────────────────────────────────────────
+
+    [ ] Gráfico 1: Ventas por día
+          → Tipo: línea o barras
+          → Datos: Pedido agrupado por fecha (TruncDay)
+
+    [ ] Gráfico 2: Métodos de pago
+          → Tipo: torta / doughnut
+          → Datos: agrupado por metodo_pago
+
+    [ ] Gráfico 3: Top 10 productos más vendidos
+          → Tipo: barras horizontales
+          → Datos: suma PedidoDetalle.cantidad por producto
+
+    [ ] Gráfico 4: Top 10 productos por margen
+          → Tipo: barras
+          → Datos: (precio_historico - costo_insumo) * cantidad por producto
+
+  ─────────────────────────────────────────────────────────────────────────────
+  TABLAS Y WIDGETS ADICIONALES
+  ─────────────────────────────────────────────────────────────────────────────
+
+    [ ] Rendimiento por mozo
+          → Pedidos cerrados, total vendido, ticket promedio
+          → Agrupado por Pedido.mozo
+
+    [ ] Rotación de mesas
+          → Tiempo promedio de ocupación (fecha_cierre - fecha_apertura)
+          → Por mesa y por sector
+
+    [ ] Performance de cocina
+          → Tiempo promedio desde 'Pendiente' hasta 'Listo' en FlujoEstado
+          → Detecta productos que tardan más
+
+================================================================================
+FASE 3 — PANTALLAS OPERACIONALES FALTANTES
+================================================================================
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 3.1 — Gestión de Reservas
+  ─────────────────────────────────────────────────────────────────────────────
+      URL: /reservas/
+      FUNCIONALIDADES:
+        - Lista de reservas del día con estado (Confirmada/Cancelada/Completada)
+        - Formulario: crear reserva (mesa, cliente, fecha/hora, personas, notas)
+        - Integración con salón: mesas con reserva futura → estado 'Reservada'
+        - Botón "Confirmar llegada" → convierte reserva en Pedido activo
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 3.2 — Gestión de Productos (sin usar el admin de Django)
+  ─────────────────────────────────────────────────────────────────────────────
+      URL: /productos/
+      FUNCIONALIDADES:
+        - Lista con filtro por categoría y búsqueda por nombre
+        - Toggle rápido de disponibilidad (disponible / no disponible)
+        - Formulario de alta y edición (con upload de imagen)
+        - Mostrar margen por producto: precio_venta - costo_insumo y porcentaje
+      Permiso: Solo rol 'Cajero'
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 3.3 — Gestión de Clientes
+  ─────────────────────────────────────────────────────────────────────────────
+      URL: /clientes/
+      FUNCIONALIDADES:
+        - Lista con búsqueda por nombre / RUC
+        - Formulario de alta y edición
+        - Historial de pedidos del cliente (útil para fidelización)
+
+  ─────────────────────────────────────────────────────────────────────────────
+  [ ] 3.4 — Historial de Pedidos
+  ─────────────────────────────────────────────────────────────────────────────
+      URL: /pedidos/historial/
+      FUNCIONALIDADES:
+        - Lista de pedidos cerrados con filtros: fecha, mozo, mesa, estado
+        - Link a detalle: items, totales, documento fiscal vinculado
+        - Exportación a CSV simple
+
+================================================================================
+FASE 4 — MEJORAS UX / TÉCNICAS
+================================================================================
+
+  [ ] 4.1 — Impresión de Comanda (Ticket 80mm)
+        - Botón "Imprimir" en comanda.html
+        - CSS @media print con formato de ticket térmico
+        - Sin dependencias extra, solo CSS
+
+  [ ] 4.2 — Buscador de cliente con autocompletado
+        - Endpoint: GET /clientes/buscar/?q=<texto> → JSON
+        - Usado en el formulario de cobro (Fase 1.2) con typeahead
+        - Busca por nombre o RUC/CI
+
+  [ ] 4.3 — Control de acceso por rol en vistas (decorator)
+        - Crear decorator @requiere_rol('Cajero') en pedidos/decorators.py
+        - Aplica a: vistas de caja, productos, KPIs, historial
+        - Redirige a 'salon' con mensaje si el rol no tiene permiso
+
+  [ ] 4.4 — Notificaciones de cocina mejoradas
+        - Reducir intervalo de cocina.html de 30s a 10s
+        - Agregar badge/alerta visual cuando llegan nuevos pedidos
+        - Alternativa avanzada: Django Channels (WebSockets) — optional
+
+================================================================================
+ORDEN DE IMPLEMENTACIÓN RECOMENDADO
+================================================================================
+
+  PASO 1  → Mejoras al modelo + migrations               (Fase 0)
+  PASO 2  → Cobro de mesa / Facturación                  (Fase 1.2)
+  PASO 3  → Gestión de Arqueo / Caja                     (Fase 1.1)
+  PASO 4  → Estado "Entregado" en cocina                 (Fase 1.3)
+  PASO 5  → Dashboard KPIs                               (Fase 2)
+  PASO 6  → Historial de pedidos                         (Fase 3.4)
+  PASO 7  → Gestión de productos                         (Fase 3.2)
+  PASO 8  → Gestión de reservas                          (Fase 3.1)
+  PASO 9  → Mejoras UX (impresión, roles, notificaciones)(Fase 4)
+
+================================================================================
+NOTAS TÉCNICAS
+================================================================================
+
+  - Chart.js: usar CDN, compatible con Bootstrap 5 sin instalación
+  - Todos los gráficos: data servida por endpoint AJAX /kpis/datos/
+  - IVA Paraguay: 10% sobre alimentos y bebidas (validar con cliente)
+  - Guaraníes (Gs.): sin decimales — usar DecimalField(decimal_places=0)
+  - Formateo de moneda en JS: Intl.NumberFormat('es-PY') — ya implementado
+  - Seguir patrón existente: AJAX con fetch(), respuesta JSON, update DOM
+
+================================================================================
+FIN DEL PLAN
+================================================================================

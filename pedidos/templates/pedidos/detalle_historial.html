@@ -1,0 +1,155 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Pedido #{{ pedido.id }} — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+    <a href="{% url 'historial_pedidos' %}" class="text-decoration-none text-muted small mb-3 d-block">← Volver al historial</a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="fw-bold m-0">
+            Pedido <span class="badge bg-light text-dark fs-6 ms-1">#{{ pedido.id }}</span>
+        </h2>
+        {% if pedido.estado_pago == 'Pagado' %}
+        <span class="badge rounded-pill fs-6 px-3 py-2" style="background:#84a59d;">✓ Pagado</span>
+        {% else %}
+        <span class="badge rounded-pill fs-6 px-3 py-2 bg-danger">✖ Anulado</span>
+        {% endif %}
+    </div>
+
+    <div class="row g-4">
+
+        {# ── Columna izquierda: items ── #}
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+                    <h6 class="text-uppercase fw-bold small text-muted mb-3">Detalle del Pedido</h6>
+
+                    <div class="mb-3 text-muted small">
+                        <span>Mesa {{ pedido.mesa.numero_mesa }}</span> •
+                        <span>{{ pedido.fecha_apertura|date:"d/m/Y H:i" }} → {{ pedido.fecha_cierre|date:"H:i"|default:"—" }}</span><br>
+                        <span>Mozo: <strong>
+                            {% if pedido.mozo.empleado %}{{ pedido.mozo.empleado.nombre }} {{ pedido.mozo.empleado.apellido }}{% else %}{{ pedido.mozo.username }}{% endif %}
+                        </strong></span> •
+                        <span>Cliente: <strong>{{ pedido.cliente.nombre_razon_social }}</strong></span>
+                    </div>
+
+                    {% for item in detalles %}
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-light">
+                        <div>
+                            <span class="fw-bold text-accent">{{ item.cantidad }}×</span>
+                            <span class="ms-1">{{ item.producto.nombre }}</span>
+                            <span class="text-muted small ms-1">(Gs. {{ item.precio_historico }} c/u)</span>
+                        </div>
+                        <span class="fw-bold text-muted small price-gs" data-value="{{ item.subtotal_linea }}">
+                            Gs. {{ item.subtotal_linea }}
+                        </span>
+                    </div>
+                    {% endfor %}
+
+                    <div class="d-flex justify-content-between mt-3">
+                        <span class="fw-bold">Subtotal</span>
+                        <span class="fw-bold price-gs" data-value="{{ pedido.total_pedido }}">Gs. {{ pedido.total_pedido }}</span>
+                    </div>
+                    {% if pedido.descuento %}
+                    <div class="d-flex justify-content-between text-muted small">
+                        <span>Descuento</span>
+                        <span class="price-gs" data-value="{{ pedido.descuento }}">− Gs. {{ pedido.descuento }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# ── Columna derecha: documento fiscal ── #}
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+                    <h6 class="text-uppercase fw-bold small text-muted mb-3">Documento Fiscal</h6>
+                    {% if vinculo %}
+                    {% with doc=vinculo.documento %}
+                    <div class="mb-2">
+                        <span class="text-muted small">Factura N°</span><br>
+                        <span class="fw-bold">{{ doc.nro_factura }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-muted small">Timbrado</span><br>
+                        <span>{{ doc.timbrado.numero_timbrado }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-muted small">Método de Pago</span><br>
+                        <span>{{ doc.metodo_pago }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-muted small">IVA 10% (incluido)</span><br>
+                        <span class="price-gs" data-value="{{ doc.total_iva_10 }}">Gs. {{ doc.total_iva_10 }}</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <span class="fw-bold">Total</span>
+                        <span class="fw-bold text-accent price-gs" data-value="{{ doc.monto_total }}">Gs. {{ doc.monto_total }}</span>
+                    </div>
+                    <div class="mt-3">
+                        {% if doc.estado == 'Vigente' %}
+                        <span class="badge rounded-pill" style="background:#84a59d;">✓ Vigente</span>
+                        {% else %}
+                        <span class="badge rounded-pill bg-danger">✖ Anulado</span>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                    {% else %}
+                    <p class="text-muted small">Sin documento fiscal asociado.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if pedido.estado_pago == 'Pagado' %}
+            <a href="{% url 'imprimir_factura' pedido.id %}"
+               class="btn btn-action btn-secondary-japandi w-100 rounded-pill py-2 mb-2 fw-bold">
+                🖨️ Reimprimir Factura
+            </a>
+            <button class="btn btn-danger w-100 rounded-pill py-2"
+                    data-bs-toggle="modal" data-bs-target="#modalAnularDetalle">
+                ✖ Anular Pedido
+            </button>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+{% if pedido.estado_pago == 'Pagado' %}
+<div class="modal fade" id="modalAnularDetalle" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content shadow-lg border-0" style="border-radius:20px;">
+            <div class="modal-body p-4 text-center">
+                <div class="mb-3 text-danger fs-3">⚠️</div>
+                <h5 class="fw-bold">¿Anular Pedido #{{ pedido.id }}?</h5>
+                <p class="text-muted small">Se anulará la factura y la mesa quedará libre. No se puede deshacer.</p>
+                <form method="post" action="{% url 'anular_pedido' pedido.id %}">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger rounded-pill py-2">Sí, anular</button>
+                        <button type="button" class="btn btn-light rounded-pill py-2" data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function formatGs(v) {
+        return 'Gs. ' + new Intl.NumberFormat('es-PY').format(Math.round(Number(v) || 0));
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.price-gs').forEach(el => {
+            el.textContent = formatGs(el.dataset.value);
+        });
+    });
+</script>
+{% endblock %}

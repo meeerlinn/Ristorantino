@@ -1,0 +1,52 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ristorantino | Acceso al Sistema</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&family=Poppins:wght@600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{% static 'pedidos/css/style.css' %}" rel="stylesheet">
+</head>
+<body class="body-login">
+
+    <div class="login-container">
+        <div class="login-card">
+            <span class="brand-logo">RISTORANTINO</span>
+            <p class="subtitle text-uppercase">Gestión de Restaurante • PIT 2026</p>
+
+            {% if form.errors %}
+                <div class="error-msg">
+                    Usuario o contraseña incorrectos. Intente de nuevo.
+                </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="form-floating mb-3">
+                    <input type="text" name="username" class="form-control" id="id_username" placeholder="Usuario" required>
+                    <label for="id_username">Usuario</label>
+                </div>
+
+                <div class="form-floating mb-4">
+                    <input type="password" name="password" class="form-control" id="id_password" placeholder="Contraseña" required>
+                    <label for="id_password">Contraseña</label>
+                </div>
+
+                <button type="submit" class="btn-login">
+                    INICIAR SESIÓN
+                </button>
+            </form>
+
+            <div class="footer-text">
+                Desarrollado para Tesis Profesional <br>
+                &copy; 2026 Paraguay
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

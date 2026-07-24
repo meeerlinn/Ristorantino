@@ -1,0 +1,101 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Clientes — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="fw-bold m-0">👥 Clientes</h2>
+        <a href="{% url 'crear_cliente' %}" class="btn btn-action btn-primary-japandi px-4">
+            + Nuevo Cliente
+        </a>
+    </div>
+
+    <form method="get" class="mb-4">
+        <div class="input-group" style="max-width:400px;">
+            <input type="text" name="q" value="{{ q }}" class="form-control rounded-start-3"
+                   placeholder="Buscar por nombre o RUC/CI…">
+            <button type="submit" class="btn btn-action btn-primary-japandi rounded-end-3">Buscar</button>
+        </div>
+    </form>
+
+    {% if clientes %}
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" style="font-size:0.875rem;">
+                    <thead style="background:#f8f6f4;">
+                        <tr>
+                            <th class="px-3 py-3">Nombre / Razón Social</th>
+                            <th>RUC / CI</th>
+                            <th>Teléfono</th>
+                            <th>Dirección</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for c in clientes %}
+                    <tr>
+                        <td class="px-3 fw-bold">{{ c.nombre_razon_social }}</td>
+                        <td class="text-muted">{{ c.ruc_ci }}</td>
+                        <td class="text-muted">{{ c.telefono|default:"—" }}</td>
+                        <td class="text-muted small">{{ c.direccion|default:"—" }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'editar_cliente' c.id %}"
+                               class="btn btn-sm btn-action btn-secondary-japandi py-1 px-3"
+                               style="font-size:0.75rem;">
+                                ✏️ Editar
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Paginación -->
+    {% if page_obj.has_other_pages %}
+    <nav class="mt-4 d-flex justify-content-center" aria-label="Paginación clientes">
+        <ul class="pagination pagination-sm gap-1 flex-wrap justify-content-center">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link rounded-3" href="?{% if q %}q={{ q }}&{% endif %}page={{ page_obj.previous_page_number }}">‹ Anterior</a>
+            </li>
+            {% endif %}
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <li class="page-item active">
+                    <span class="page-link rounded-3" style="background:var(--japandi-accent); border-color:var(--japandi-accent);">{{ num }}</span>
+                </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <li class="page-item">
+                    <a class="page-link rounded-3" href="?{% if q %}q={{ q }}&{% endif %}page={{ num }}">{{ num }}</a>
+                </li>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link rounded-3" href="?{% if q %}q={{ q }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente ›</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    <p class="text-center text-muted small mt-1">
+        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        — {{ page_obj.paginator.count }} clientes en total
+    </p>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-5 text-muted">
+        <p class="fs-3">👥</p>
+        <p>{% if q %}No se encontraron clientes para "{{ q }}".{% else %}No hay clientes registrados aún.{% endif %}</p>
+        <a href="{% url 'crear_cliente' %}" class="btn btn-action btn-primary-japandi px-4 mt-2">+ Agregar primer cliente</a>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

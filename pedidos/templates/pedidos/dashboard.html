@@ -1,0 +1,348 @@
+{% extends 'pedidos/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:1100px;">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="fw-bold m-0">📊 Dashboard</h2>
+        <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+            <label class="text-muted small mb-0">Desde</label>
+            <input type="date" name="fecha_desde" value="{{ fecha_desde|date:'Y-m-d' }}"
+                   class="form-control form-control-sm rounded-3" style="width:145px;">
+            <label class="text-muted small mb-0">Hasta</label>
+            <input type="date" name="fecha_hasta" value="{{ fecha_hasta|date:'Y-m-d' }}"
+                   class="form-control form-control-sm rounded-3" style="width:145px;">
+            <button type="submit" class="btn btn-sm btn-action btn-primary-japandi px-3">Filtrar</button>
+            <a href="{% url 'exportar_dashboard_excel' %}?{{ request.GET.urlencode }}"
+               class="btn btn-sm px-3 fw-bold"
+               style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; border-radius:8px;">
+               📥 Excel
+            </a>
+        </form>
+    </div>
+
+    {# ── Fila 1: KPI Cards ── #}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-3 text-center">
+                    <p class="text-muted small text-uppercase mb-1" style="letter-spacing:.5px;">Total Facturado</p>
+                    <p class="fw-bold fs-5 m-0" style="color:var(--japandi-accent);" id="kpi-total">Gs. {{ total_facturado }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-3 text-center">
+                    <p class="text-muted small text-uppercase mb-1" style="letter-spacing:.5px;">Tickets</p>
+                    <p class="fw-bold fs-5 m-0">{{ ticket_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-3 text-center">
+                    <p class="text-muted small text-uppercase mb-1" style="letter-spacing:.5px;">Ticket Promedio</p>
+                    <p class="fw-bold fs-5 m-0" id="kpi-promedio">Gs. {{ ticket_promedio }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-3 text-center">
+                    <p class="text-muted small text-uppercase mb-1" style="letter-spacing:.5px;">Tiempo Cocina</p>
+                    <p class="fw-bold fs-5 m-0">
+                        {% if tiempo_cocina_min is not None %}
+                            {{ tiempo_cocina_min }} min
+                        {% else %}
+                            <span class="text-muted small">Sin datos</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Fila 2: Métodos de pago ── #}
+    <div class="row g-3 mb-4">
+        <div class="col-md-5">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h6 class="text-uppercase fw-bold small text-muted mb-3">Métodos de Pago</h6>
+                    {% if metodos %}
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>Método</th><th class="text-end">Total</th><th class="text-end">Tickets</th></tr></thead>
+                        <tbody>
+                        {% for m in metodos %}
+                        <tr>
+                            <td>{{ m.metodo_pago|default:"—" }}</td>
+                            <td class="text-end price-gs" data-value="{{ m.total }}">Gs. {{ m.total }}</td>
+                            <td class="text-end">{{ m.cantidad }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted small text-center py-3">Sin ventas en el período.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4 d-flex flex-column">
+                    <h6 class="text-uppercase fw-bold small text-muted mb-3">Distribución de Pagos</h6>
+                    {% if metodos %}
+                    <div style="max-height:200px; display:flex; justify-content:center;">
+                        <canvas id="chartMetodos"></canvas>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small text-center py-3 m-auto">Sin datos.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Fila 3: Top productos ── #}
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h6 class="text-uppercase fw-bold small text-muted mb-3">Top 5 por Cantidad</h6>
+                    {% if top_cantidad %}
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>Producto</th><th class="text-end">Uds.</th></tr></thead>
+                        <tbody>
+                        {% for t in top_cantidad %}
+                        <tr><td>{{ t.producto__nombre }}</td><td class="text-end fw-bold">{{ t.total_qty }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted small text-center py-3">Sin datos.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h6 class="text-uppercase fw-bold small text-muted mb-3">Top 5 por Revenue</h6>
+                    {% if top_revenue %}
+                    <canvas id="chartTopRevenue" style="max-height:200px;"></canvas>
+                    {% else %}
+                    <p class="text-muted small text-center py-3">Sin datos.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Fila 4: Margen por producto ── #}
+    {% if margen_productos %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase fw-bold small text-muted mb-3">Margen Bruto por Producto (Top 10)</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Producto</th><th>Categoría</th>
+                            <th class="text-end">Revenue</th>
+                            <th class="text-end">Margen Bruto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for m in margen_productos %}
+                    <tr>
+                        <td>{{ m.producto__nombre }}</td>
+                        <td class="text-muted small">{{ m.producto__categoria__nombre|default:"—" }}</td>
+                        <td class="text-end price-gs" data-value="{{ m.revenue }}">Gs. {{ m.revenue }}</td>
+                        <td class="text-end fw-bold {% if m.margen and m.margen < 0 %}text-danger{% else %}text-success{% endif %} price-gs" data-value="{{ m.margen }}">
+                            Gs. {{ m.margen }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Fila 5: Rotación de mesas ── #}
+    {% if rotacion %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase fw-bold small text-muted mb-3">Rotación de Mesas</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Mesa</th><th class="text-end">Pedidos</th><th class="text-end">Tiempo Prom.</th></tr></thead>
+                    <tbody>
+                    {% for r in rotacion %}
+                    <tr>
+                        <td>Mesa {{ r.mesa__numero_mesa }}</td>
+                        <td class="text-end">{{ r.pedidos_mesa }}</td>
+                        <td class="text-end">{% if r.tiempo_promedio_min %}{{ r.tiempo_promedio_min }} min{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Fila 6: Arqueos ── #}
+    {% if arqueos %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase fw-bold small text-muted mb-3">Arqueos Cerrados</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr><th>Fecha Cierre</th><th>Caja</th><th>Usuario</th>
+                        <th class="text-end">Sistema</th><th class="text-end">Real</th>
+                        <th class="text-end">Diferencia</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for a in arqueos %}
+                    <tr>
+                        <td>{{ a.fecha_cierre|date:"d/m/Y H:i" }}</td>
+                        <td>{{ a.caja.nombre }}</td>
+                        <td>{{ a.usuario.username }}</td>
+                        <td class="text-end price-gs" data-value="{{ a.monto_cierre_sistema }}">Gs. {{ a.monto_cierre_sistema }}</td>
+                        <td class="text-end price-gs" data-value="{{ a.monto_cierre_real }}">Gs. {{ a.monto_cierre_real }}</td>
+                        <td class="text-end fw-bold {% if a.diferencia_arqueo != 0 %}text-danger{% else %}text-success{% endif %} price-gs" data-value="{{ a.diferencia_arqueo }}">
+                            Gs. {{ a.diferencia_arqueo }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Fila 7: Ventas por Mozo ── #}
+    {% if ventas_por_mozo %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <h6 class="text-uppercase fw-bold small text-muted mb-3">🏆 Ranking de Mozos</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Usuario</th>
+                            <th>Empleado</th>
+                            <th class="text-end">Tickets</th>
+                            <th class="text-end">Total Vendido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for m in ventas_por_mozo %}
+                    <tr>
+                        <td class="fw-bold text-muted">{{ forloop.counter }}</td>
+                        <td>{{ m.mozo__username|default:"—" }}</td>
+                        <td>{{ m.mozo__empleado__nombre|default:"" }} {{ m.mozo__empleado__apellido|default:"" }}</td>
+                        <td class="text-end">{{ m.tickets }}</td>
+                        <td class="text-end fw-bold price-gs" data-value="{{ m.total }}">Gs. {{ m.total }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+    // Formato Guaraní
+    function formatGs(v) {
+        return 'Gs. ' + new Intl.NumberFormat('es-PY').format(Math.round(Number(v) || 0));
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.price-gs').forEach(el => {
+            el.textContent = formatGs(el.dataset.value);
+        });
+        document.getElementById('kpi-total').textContent    = formatGs({{ total_facturado }});
+        document.getElementById('kpi-promedio').textContent = formatGs({{ ticket_promedio }});
+    });
+
+    // Chart: Métodos de Pago (Doughnut)
+    {% if metodos %}
+    const metodosData = {{ metodos_json|safe }};
+    const colores = ['#84a59d','#f28482','#f7d177','#6c757d','#adb5bd'];
+    new Chart(document.getElementById('chartMetodos'), {
+        type: 'doughnut',
+        data: {
+            labels: metodosData.map(m => m.label),
+            datasets: [{
+                data: metodosData.map(m => m.value),
+                backgroundColor: colores.slice(0, metodosData.length),
+                borderWidth: 2,
+                borderColor: '#f8f6f4',
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ' ' + formatGs(ctx.raw)
+                    }
+                }
+            }
+        }
+    });
+    {% endif %}
+
+    // Chart: Top 5 Revenue (Horizontal Bar)
+    {% if top_revenue %}
+    const revData = {{ top_rev_json|safe }};
+    new Chart(document.getElementById('chartTopRevenue'), {
+        type: 'bar',
+        data: {
+            labels: revData.map(t => t.label),
+            datasets: [{
+                label: 'Revenue',
+                data: revData.map(t => t.value),
+                backgroundColor: '#84a59d',
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: ctx => ' ' + formatGs(ctx.raw) }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { callback: v => 'Gs. ' + new Intl.NumberFormat('es-PY').format(v) },
+                    grid: { color: '#f0ede8' }
+                },
+                y: { grid: { display: false } }
+            }
+        }
+    });
+    {% endif %}
+</script>
+{% endblock %}

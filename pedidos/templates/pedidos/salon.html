@@ -1,0 +1,195 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Ristorantino | Gestión de Salón{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <div class="leyenda-container mb-2">
+            <div class="leyenda-item"><div class="dot" style="background: var(--libre)"></div> Libre</div>
+            <div class="leyenda-item"><div class="dot" style="background: var(--ocupada)"></div> Ocupada</div>
+            <div class="leyenda-item"><div class="dot" style="background: var(--reservada)"></div> Reservada</div>
+            <div class="leyenda-item"><div class="dot" style="background: var(--sucia)"></div> Sucia</div>
+        </div>
+
+        {% for sector in sectores %}
+            <h2 class="sector-title">{{ sector.nombre }}</h2>
+            <div class="mesa-container">
+                {% for mesa in mesas %}
+                    {% if mesa.sector == sector %}
+                        <div class="mesa-wrapper {% if mesa.capacidad > 4 %}rectangular{% else %}cuadrada{% endif %} {{ mesa.estado }}"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalMesa{{ mesa.id }}">
+                            {% if mesa.capacidad >= 7 %}
+                                <div class="chair-dot chair-t1"></div><div class="chair-dot chair-t2"></div><div class="chair-dot chair-t3"></div>
+                                <div class="chair-dot chair-b1"></div><div class="chair-dot chair-b2"></div><div class="chair-dot chair-b3"></div>
+                                <div class="chair-dot chair-left"></div><div class="chair-dot chair-right"></div>
+                            {% elif mesa.capacidad >= 5 %}
+                                <div class="chair-dot chair-t1"></div><div class="chair-dot chair-t3"></div>
+                                <div class="chair-dot chair-b1"></div><div class="chair-dot chair-b3"></div>
+                                <div class="chair-dot chair-left"></div><div class="chair-dot chair-right"></div>
+                            {% else %}
+                                <div class="chair-dot chair-top"></div><div class="chair-dot chair-bottom"></div>
+                                <div class="chair-dot chair-left"></div><div class="chair-dot chair-right"></div>
+                            {% endif %}
+
+                            <div class="mesa-card">
+                                <span class="estado-texto">{{ mesa.estado }}</span>
+                                <p class="nro-mesa">{{ mesa.numero_mesa }}</p>
+                                <span class="capacidad">CAP: {{ mesa.capacidad }}</span>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </div>
+
+    {# ── Modales por mesa ── #}
+    {% for mesa in mesas %}
+    <div class="modal fade" id="modalMesa{{ mesa.id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-2xl">
+
+                <div class="modal-header border-0 d-flex justify-content-between align-items-start">
+                    <div>
+                        <h3 class="fw-bold mb-1" style="color: var(--japandi-dark);">Mesa {{ mesa.numero_mesa }}</h3>
+                        <p class="text-muted small mb-0">{{ mesa.sector.nombre }} • Capacidad: {{ mesa.capacidad }} personas</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body p-4">
+                    <div class="d-flex align-items-center gap-2 mb-4 p-3 rounded-4" style="background: white;">
+                        <span class="status-indicator
+                            {% if mesa.estado == 'Libre' %}bg-success
+                            {% elif mesa.estado == 'Ocupada' %}bg-danger
+                            {% elif mesa.estado == 'Reservada' %}bg-warning
+                            {% else %}bg-secondary{% endif %}">
+                        </span>
+                        <span class="fw-bold small text-uppercase" style="letter-spacing: 1px;">
+                            {{ mesa.estado }}
+                        </span>
+                    </div>
+
+                    <div class="d-flex flex-column gap-3">
+
+                        {# ── LIBRE o SUCIA ── #}
+                        {% if mesa.estado == 'Libre' or mesa.estado == 'Sucia' %}
+                            <a href="{% url 'abrir_mesa' mesa.id %}" class="btn btn-action btn-primary-japandi">
+                                <span>✨</span> Abrir Nuevo Pedido
+                            </a>
+                            {% if mesa.estado == 'Libre' %}
+                            <a href="{% url 'crear_reservacion' mesa.id %}" class="btn btn-action btn-secondary-japandi">
+                                <span>📅</span> Reservar Mesa
+                            </a>
+                            {% endif %}
+
+                        {# ── OCUPADA ── #}
+                        {% elif mesa.estado == 'Ocupada' %}
+                            <a href="{% url 'abrir_mesa' mesa.id %}" class="btn btn-action btn-primary-japandi">
+                                <span>📝</span> Gestionar Pedido
+                            </a>
+                            {% if mesa.pedido_activo_id %}
+                            <a href="{% url 'cobrar_pedido' mesa.pedido_activo_id %}"
+                               class="btn btn-action btn-secondary-japandi"
+                               style="background-color: #e8f5e9; color: #2e7d32; border-color: #c8e6c9;">
+                                <span>💳</span> Cerrar Mesa / Facturar
+                            </a>
+                            {% endif %}
+
+                        {# ── RESERVADA ── #}
+                        {% elif mesa.estado == 'Reservada' %}
+                            {% if mesa.reservacion_activa %}
+                            <div class="p-3 rounded-3 mb-1" style="background:#fffde7; border:1px solid #ffe082;">
+                                <p class="mb-1 small fw-bold">📅 Reserva confirmada</p>
+                                <p class="mb-0 small text-muted">
+                                    {{ mesa.reservacion_activa.cliente.nombre_razon_social }}<br>
+                                    {{ mesa.reservacion_activa.fecha_reserva|date:"d/m H:i" }} •
+                                    {{ mesa.reservacion_activa.cantidad_personas }} personas
+                                </p>
+                            </div>
+                            <form method="post" action="{% url 'activar_mesa_reservada' mesa.reservacion_activa.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-action btn-primary-japandi w-100">
+                                    <span>🍽️</span> Activar Mesa / Abrir Pedido
+                                </button>
+                            </form>
+                            <form method="post" action="{% url 'cancelar_reservacion' mesa.reservacion_activa.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-action btn-secondary-japandi w-100"
+                                        onclick="return confirm('¿Cancelar la reserva?')">
+                                    <span>✖</span> Cancelar Reserva
+                                </button>
+                            </form>
+                            {% else %}
+                            <a href="{% url 'abrir_mesa' mesa.id %}" class="btn btn-action btn-primary-japandi">
+                                <span>✨</span> Abrir Pedido
+                            </a>
+                            {% endif %}
+                        {% endif %}
+
+                        <hr class="my-2 opacity-10">
+
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <button class="btn btn-action btn-secondary-japandi w-100 py-2 small"
+                                        style="font-size: 0.8rem;"
+                                        onclick="marcarSucia({{ mesa.id }}, this)"
+                                        data-bs-dismiss="modal">
+                                    🧹 Marcar Sucia
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                {% if user.is_superuser or user.empleado.rol.nombre == 'Cajero' or user.empleado.rol.nombre == 'Administrador' %}
+                                <button class="btn btn-action btn-secondary-japandi w-100 py-2 small"
+                                        style="font-size: 0.8rem; color: #dc3545;"
+                                        onclick="bloquearMesa({{ mesa.id }}, this)"
+                                        data-bs-dismiss="modal">
+                                    🛠️ Bloquear
+                                </button>
+                                {% else %}
+                                <button class="btn btn-action btn-secondary-japandi w-100 py-2 small disabled"
+                                        style="font-size: 0.8rem; opacity: 0.5;" disabled>
+                                    🛠️ Bloquear
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="modal-footer border-0 justify-content-center pb-4 text-muted" style="font-size: 0.75rem;">
+                    Ristorantino • 2026
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const CSRF = '{{ csrf_token }}';
+
+    function marcarSucia(mesaId, btn) {
+        fetch(`/mesa/${mesaId}/marcar-sucia/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' }
+        })
+        .then(r => r.json())
+        .then(() => location.reload())
+        .catch(() => alert('Error al marcar la mesa. Intentá de nuevo.'));
+    }
+
+    function bloquearMesa(mesaId, btn) {
+        fetch(`/mesa/${mesaId}/bloquear/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' }
+        })
+        .then(r => r.json())
+        .then(() => location.reload())
+        .catch(() => alert('Error al bloquear la mesa. Intentá de nuevo.'));
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,388 @@
+{% extends 'pedidos/base.html' %}
+{% load static %}
+
+{% block title %}Cobrar — Mesa {{ pedido.mesa.numero_mesa }}{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 860px;">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{% url 'tomar_pedido' pedido.id %}" class="text-decoration-none text-muted small mb-1 d-block">← Volver a la comanda</a>
+            <h2 class="fw-bold m-0">Cobrar — Mesa {{ pedido.mesa.numero_mesa }}
+                <span class="badge bg-light text-dark fs-6 ms-2">#{{ pedido.id }}</span>
+            </h2>
+        </div>
+    </div>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="alert alert-{{ msg.tags }} alert-dismissible fade show rounded-3 mb-4" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if not arqueo %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4 text-center">
+            <p class="fs-4 mb-2">⚠️</p>
+            <h5 class="fw-bold">No hay caja abierta</h5>
+            <p class="text-muted">Debés abrir la caja antes de registrar un cobro.</p>
+            <a href="{% url 'gestion_caja' %}" class="btn btn-action btn-primary-japandi px-4">Ir a Caja</a>
+        </div>
+    </div>
+    {% else %}
+
+    <form method="post" id="form-cobro">
+        {% csrf_token %}
+        <input type="hidden" name="cliente_id" id="cliente_id_hidden">
+
+        <div class="row g-4">
+
+            <!-- Columna izquierda: items + cliente -->
+            <div class="col-lg-7">
+
+                <!-- Items del pedido -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-uppercase fw-bold small text-muted mb-3">Detalle del Pedido</h6>
+                        {% for item in detalles %}
+                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-light">
+                            <div>
+                                <span class="fw-bold text-accent">{{ item.cantidad }}×</span>
+                                <span class="ms-1">{{ item.producto.nombre }}</span>
+                                <span class="text-muted small ms-1">(Gs. {{ item.precio_historico }} c/u)</span>
+                            </div>
+                            <span class="fw-bold text-muted small price-gs" data-value="{{ item.subtotal_linea }}">Gs. {{ item.subtotal_linea }}</span>
+                        </div>
+                        {% endfor %}
+
+                        <div class="d-flex justify-content-between mt-3">
+                            <span class="fw-bold">Subtotal</span>
+                            <span class="fw-bold price-gs" data-value="{{ pedido.total_pedido }}">Gs. {{ pedido.total_pedido }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Búsqueda de cliente -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-uppercase fw-bold small text-muted mb-3">Cliente</h6>
+                        <div class="position-relative">
+                            <input type="text" id="cliente-search" class="form-control rounded-3"
+                                placeholder="Buscar por nombre o RUC/CI…"
+                                autocomplete="off">
+                            <div id="cliente-results" class="position-absolute w-100 bg-white border rounded-3 shadow-sm mt-1"
+                                style="z-index:1000; display:none; max-height:200px; overflow-y:auto;"></div>
+                        </div>
+                        <div id="cliente-seleccionado" class="mt-2 text-muted small d-none">
+                            <span class="badge rounded-pill" style="background: var(--japandi-accent); color:white;">
+                                Cliente: <span id="cliente-nombre-display"></span>
+                                <button type="button" onclick="limpiarCliente()" class="btn-close btn-close-white ms-1" style="font-size:0.6rem;"></button>
+                            </span>
+                        </div>
+                        <div class="text-muted small mt-2">Si no seleccionás cliente, se usará "Ocasional".</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Columna derecha: pago + total -->
+            <div class="col-lg-5">
+
+                <!-- Método de pago -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-uppercase fw-bold small text-muted mb-3">Método de Pago</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for val, label in metodos_pago %}
+                            <label class="metodo-btn">
+                                <input type="radio" name="metodo_pago" value="{{ val }}"
+                                    {% if forloop.first %}checked{% endif %}>
+                                <span>{{ label }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Descuento y total -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-uppercase fw-bold small text-muted mb-3">Totales</h6>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Subtotal</span>
+                            <span class="fw-bold" id="display-subtotal">Gs. {{ pedido.total_pedido }}</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label for="descuento" class="text-muted mb-0">Descuento (Gs.)</label>
+                            <input type="number" name="descuento" id="descuento" class="form-control text-end fw-bold"
+                                style="width: 140px;" value="0" min="0" max="{{ pedido.total_pedido }}" oninput="actualizarTotal()">
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-2 text-muted small">
+                            <span>IVA 10% (incluido)</span>
+                            <span id="display-iva">Gs. 0</span>
+                        </div>
+
+                        <hr>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="h5 fw-bold">Total</span>
+                            <span class="h5 fw-bold text-accent" id="display-total">Gs. {{ pedido.total_pedido }}</span>
+                        </div>
+
+                        <!-- Vuelto (solo efectivo) -->
+                        <div id="bloque-vuelto" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label for="efectivo-recibido" class="text-muted mb-0">Efectivo recibido</label>
+                                <input type="number" id="efectivo-recibido" class="form-control text-end fw-bold"
+                                    style="width:140px;" min="0" placeholder="0" oninput="actualizarVuelto()">
+                            </div>
+                            <div class="d-flex justify-content-between fw-bold">
+                                <span style="color:#2e7d32;">Vuelto</span>
+                                <span id="display-vuelto" style="color:#2e7d32;">Gs. 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info del arqueo -->
+                <div class="text-muted small mb-3">
+                    <span>Caja: <strong>{{ arqueo.caja.nombre }}</strong></span>
+                </div>
+
+                <!-- División de cuenta -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="text-uppercase fw-bold small text-muted mb-0">Dividir Cuenta</h6>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="toggle-split" onchange="toggleSplit()">
+                            </div>
+                        </div>
+                        <div id="bloque-split" style="display:none;">
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <label class="text-muted small mb-0">Personas:</label>
+                                <input type="number" id="split-personas" class="form-control text-center fw-bold"
+                                       style="width:70px;" min="2" max="10" value="2"
+                                       oninput="recalcularSplit()">
+                            </div>
+                            <div id="split-partes"></div>
+                            <div class="d-flex justify-content-between mt-2 pt-2 border-top">
+                                <span class="small text-muted">Pendiente</span>
+                                <span id="split-pendiente" class="small fw-bold text-danger">Gs. 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-action btn-primary-japandi w-100 py-3 fs-5 fw-bold">
+                    Confirmar Cobro
+                </button>
+            </div>
+
+        </div>
+    </form>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .metodo-btn input[type="radio"] { display: none; }
+    .metodo-btn span {
+        display: inline-block;
+        padding: 0.45rem 1.1rem;
+        border-radius: 50px;
+        border: 2px solid #e0ddd6;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.875rem;
+        transition: all 0.15s;
+        color: var(--japandi-text);
+        background: white;
+    }
+    .metodo-btn input[type="radio"]:checked + span {
+        background: var(--japandi-accent);
+        border-color: var(--japandi-accent);
+        color: white;
+    }
+    .metodo-btn span:hover { border-color: var(--japandi-accent); }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const subtotal = {{ pedido.total_pedido }};
+
+    function formatGs(v) {
+        return 'Gs. ' + new Intl.NumberFormat('es-PY').format(Math.round(v));
+    }
+
+    let totalActual = subtotal;
+
+    function actualizarTotal() {
+        const input = document.getElementById('descuento');
+        let descuento = parseInt(input.value) || 0;
+        if (descuento < 0) { descuento = 0; input.value = 0; }
+        if (descuento > subtotal) { descuento = subtotal; input.value = subtotal; }
+        totalActual = subtotal - descuento;
+        const iva = Math.floor(totalActual / 11);
+        document.getElementById('display-total').textContent = formatGs(totalActual);
+        document.getElementById('display-iva').textContent = formatGs(iva);
+        actualizarVuelto();
+    }
+
+    function actualizarVuelto() {
+        const recibido = parseInt(document.getElementById('efectivo-recibido').value) || 0;
+        const vuelto = recibido - totalActual;
+        const el = document.getElementById('display-vuelto');
+        if (recibido === 0) {
+            el.textContent = formatGs(0);
+            el.style.color = '#2e7d32';
+        } else if (vuelto < 0) {
+            el.textContent = '— falta ' + formatGs(-vuelto);
+            el.style.color = '#c62828';
+        } else {
+            el.textContent = formatGs(vuelto);
+            el.style.color = '#2e7d32';
+        }
+    }
+
+    function toggleVuelto() {
+        const metodo = document.querySelector('input[name="metodo_pago"]:checked').value;
+        const bloque = document.getElementById('bloque-vuelto');
+        bloque.style.display = (metodo === 'Efectivo') ? 'block' : 'none';
+        if (metodo !== 'Efectivo') document.getElementById('efectivo-recibido').value = '';
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.price-gs').forEach(el => {
+            el.textContent = formatGs(el.dataset.value);
+        });
+        document.getElementById('display-subtotal').textContent = formatGs(subtotal);
+        actualizarTotal();
+        toggleVuelto();
+        // escuchar cambios en método de pago
+        document.querySelectorAll('input[name="metodo_pago"]').forEach(r => {
+            r.addEventListener('change', toggleVuelto);
+        });
+    });
+
+    // Búsqueda de clientes AJAX
+    let debounceTimer;
+    document.getElementById('cliente-search').addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const q = this.value;
+        if (q.length < 2) { document.getElementById('cliente-results').style.display = 'none'; return; }
+        debounceTimer = setTimeout(() => {
+            fetch(`/clientes/buscar/?q=${encodeURIComponent(q)}`)
+                .then(r => r.json())
+                .then(data => {
+                    const box = document.getElementById('cliente-results');
+                    if (!data.clientes.length) { box.style.display = 'none'; return; }
+                    box.innerHTML = data.clientes.map(c =>
+                        `<div class="px-3 py-2 border-bottom" style="cursor:pointer"
+                            onclick="seleccionarCliente(${c.id}, '${c.nombre.replace(/'/g,"\\'")}', '${c.ruc_ci}', '${c.categoria}', ${c.descuento})">
+                            <strong>${c.nombre}</strong>
+                            <span class="text-muted small">${c.ruc_ci}</span>
+                            ${c.descuento > 0 ? `<span class="badge rounded-pill ms-1" style="font-size:0.65rem; background:#e8f5e9; color:#2e7d32;">${c.categoria} −${c.descuento}%</span>` : ''}
+                        </div>`
+                    ).join('');
+                    box.style.display = 'block';
+                });
+        }, 300);
+    });
+
+    function seleccionarCliente(id, nombre, ruc, categoria, descuento) {
+        document.getElementById('cliente_id_hidden').value = id;
+        document.getElementById('cliente-search').value = nombre + ' — ' + ruc;
+        document.getElementById('cliente-results').style.display = 'none';
+        document.getElementById('cliente-nombre-display').textContent = nombre;
+        document.getElementById('cliente-seleccionado').classList.remove('d-none');
+
+        // Aplicar descuento automático si corresponde
+        if (descuento > 0) {
+            const descuentoGs = Math.floor(subtotal * descuento / 100);
+            document.getElementById('descuento').value = descuentoGs;
+            actualizarTotal();
+            // Mostrar badge de categoría
+            const badge = document.getElementById('cliente-nombre-display');
+            badge.innerHTML = `${nombre} <span class="badge rounded-pill ms-1" style="font-size:0.65rem; background:#f5f0eb; color:#4a7c59; border:1px solid #c8bfb0;">${categoria} −${descuento}%</span>`;
+        }
+    }
+
+    function limpiarCliente() {
+        document.getElementById('cliente_id_hidden').value = '';
+        document.getElementById('cliente-search').value = '';
+        document.getElementById('cliente-seleccionado').classList.add('d-none');
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#cliente-search') && !e.target.closest('#cliente-results')) {
+            document.getElementById('cliente-results').style.display = 'none';
+        }
+    });
+
+    function toggleSplit() {
+        const activo = document.getElementById('toggle-split').checked;
+        document.getElementById('bloque-split').style.display = activo ? 'block' : 'none';
+        if (activo) recalcularSplit();
+    }
+
+    function parseSplit(val) {
+        return parseInt(val.replace(/\./g, '').replace(/[^\d]/g, '')) || 0;
+    }
+
+    function formatSplit(n) {
+        return new Intl.NumberFormat('es-PY').format(n);
+    }
+
+    function recalcularSplit() {
+        const n = Math.max(2, Math.min(10, parseInt(document.getElementById('split-personas').value) || 2));
+        const base = Math.floor(totalActual / n);
+        const resto = totalActual - base * n;
+        const container = document.getElementById('split-partes');
+        container.innerHTML = '';
+        for (let i = 0; i < n; i++) {
+            const monto = base + (i === 0 ? resto : 0);
+            container.innerHTML += `
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="text-muted small" style="min-width:70px;">Persona ${i + 1}</span>
+                    <input type="text" inputmode="numeric" class="form-control text-end fw-bold split-input"
+                           style="font-size:0.9rem;" value="${formatSplit(monto)}"
+                           oninput="formatearSplitInput(this); actualizarPendiente()">
+                </div>`;
+        }
+        actualizarPendiente();
+    }
+
+    function formatearSplitInput(el) {
+        const raw = parseSplit(el.value);
+        el.value = formatSplit(raw);
+    }
+
+    function actualizarPendiente() {
+        const inputs = document.querySelectorAll('.split-input');
+        const suma = Array.from(inputs).reduce((acc, el) => acc + parseSplit(el.value), 0);
+        const pendiente = totalActual - suma;
+        const el = document.getElementById('split-pendiente');
+        el.style.color = pendiente === 0 ? '#2e7d32' : '#c62828';
+        el.textContent = pendiente === 0
+            ? '✓ Cuadra'
+            : (pendiente > 0 ? '— falta ' : '— sobra ') + formatGs(Math.abs(pendiente));
+    }
+
+    // Recalcular split si cambia el descuento
+    const _actualizarTotalOrig = actualizarTotal;
+    actualizarTotal = function() {
+        _actualizarTotalOrig();
+        if (document.getElementById('toggle-split').checked) recalcularSplit();
+    };
+</script>
+{% endblock %}

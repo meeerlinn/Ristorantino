@@ -1,0 +1,124 @@
+{% extends 'pedidos/base.html' %}
+{% load static %}
+
+{% block title %}Reservar Mesa {{ mesa.numero_mesa }} — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:580px;">
+
+    <a href="{% url 'salon' %}" class="text-decoration-none text-muted small mb-3 d-block">← Volver al salón</a>
+
+    <h2 class="fw-bold mb-4">📅 Reservar Mesa {{ mesa.numero_mesa }}</h2>
+
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <p class="text-muted small mb-0">
+                <strong>{{ mesa.sector.nombre }}</strong> • Capacidad: {{ mesa.capacidad }} personas
+            </p>
+        </div>
+    </div>
+
+    <form method="post" id="form-reservacion">
+        {% csrf_token %}
+        <input type="hidden" name="cliente_id" id="cliente_id_hidden">
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <h6 class="text-uppercase fw-bold small text-muted mb-3">Cliente</h6>
+                <div class="position-relative">
+                    <input type="text" id="cliente-search" class="form-control rounded-3"
+                        placeholder="Buscar por nombre o RUC/CI…" autocomplete="off">
+                    <div id="cliente-results"
+                         class="position-absolute w-100 bg-white border rounded-3 shadow-sm mt-1"
+                         style="z-index:1000; display:none; max-height:200px; overflow-y:auto;"></div>
+                </div>
+                <div id="cliente-seleccionado" class="mt-2 text-muted small d-none">
+                    <span class="badge rounded-pill" style="background:var(--japandi-accent); color:white;">
+                        Cliente: <span id="cliente-nombre-display"></span>
+                        <button type="button" onclick="limpiarCliente()"
+                                class="btn-close btn-close-white ms-1" style="font-size:0.6rem;"></button>
+                    </span>
+                </div>
+                <div class="text-muted small mt-2">Si no seleccionás cliente, se usará "Ocasional".</div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <h6 class="text-uppercase fw-bold small text-muted mb-3">Datos de la Reserva</h6>
+
+                <div class="mb-3">
+                    <label for="fecha_reserva" class="form-label small text-muted">Fecha y Hora *</label>
+                    <input type="datetime-local" name="fecha_reserva" id="fecha_reserva"
+                           class="form-control rounded-3" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="cantidad_personas" class="form-label small text-muted">Cantidad de personas</label>
+                    <input type="number" name="cantidad_personas" id="cantidad_personas"
+                           class="form-control rounded-3" value="2" min="1" max="{{ mesa.capacidad }}">
+                </div>
+
+                <div class="mb-0">
+                    <label for="observaciones" class="form-label small text-muted">Observaciones</label>
+                    <textarea name="observaciones" id="observaciones" rows="2"
+                              class="form-control rounded-3"
+                              placeholder="Cumpleaños, alergias, preferencias…"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-action btn-primary-japandi w-100 py-3 fs-5 fw-bold">
+            Confirmar Reserva
+        </button>
+    </form>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Búsqueda AJAX de clientes (reutiliza el mismo patrón de cobrar.html)
+    let debounceTimer;
+    document.getElementById('cliente-search').addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const q = this.value;
+        if (q.length < 2) { document.getElementById('cliente-results').style.display = 'none'; return; }
+        debounceTimer = setTimeout(() => {
+            fetch(`/clientes/buscar/?q=${encodeURIComponent(q)}`)
+                .then(r => r.json())
+                .then(data => {
+                    const box = document.getElementById('cliente-results');
+                    if (!data.clientes.length) { box.style.display = 'none'; return; }
+                    box.innerHTML = data.clientes.map(c =>
+                        `<div class="px-3 py-2 border-bottom" style="cursor:pointer"
+                            onclick="seleccionarCliente(${c.id}, '${c.nombre.replace(/'/g,"\\'")}', '${c.ruc_ci}')">
+                            <strong>${c.nombre}</strong> <span class="text-muted small">${c.ruc_ci}</span>
+                        </div>`
+                    ).join('');
+                    box.style.display = 'block';
+                });
+        }, 300);
+    });
+
+    function seleccionarCliente(id, nombre, ruc) {
+        document.getElementById('cliente_id_hidden').value = id;
+        document.getElementById('cliente-search').value = nombre + ' — ' + ruc;
+        document.getElementById('cliente-results').style.display = 'none';
+        document.getElementById('cliente-nombre-display').textContent = nombre;
+        document.getElementById('cliente-seleccionado').classList.remove('d-none');
+    }
+
+    function limpiarCliente() {
+        document.getElementById('cliente_id_hidden').value = '';
+        document.getElementById('cliente-search').value = '';
+        document.getElementById('cliente-seleccionado').classList.add('d-none');
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#cliente-search') && !e.target.closest('#cliente-results')) {
+            document.getElementById('cliente-results').style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}

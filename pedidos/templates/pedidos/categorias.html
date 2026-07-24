@@ -1,0 +1,88 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Categorías — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:700px;">
+
+    <div class="mb-4">
+        <a href="{% url 'lista_productos' %}" class="text-decoration-none text-muted small mb-1 d-block">← Volver al Menú</a>
+        <h2 class="fw-bold m-0">📋 Categorías</h2>
+    </div>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="alert alert-{{ msg.tags }} alert-dismissible fade show rounded-3 mb-3" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if error %}
+    <div class="alert alert-danger rounded-3 mb-3">{{ error }}</div>
+    {% endif %}
+
+    <!-- Tabla de categorías -->
+    {% if categorias %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0" style="font-size:0.875rem;">
+                <thead style="background:#f8f6f4;">
+                    <tr>
+                        <th class="px-3 py-3">Categoría</th>
+                        <th class="text-center">Productos</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for cat in categorias %}
+                <tr>
+                    <td class="px-3 fw-bold">{{ cat.nombre }}</td>
+                    <td class="text-center text-muted">{{ cat.total_productos }}</td>
+                    <td class="text-center">
+                        <a href="?editar={{ cat.id }}" class="btn btn-sm btn-action btn-secondary-japandi py-1 px-3" style="font-size:0.75rem;">✏️ Editar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted text-center py-4">No hay categorías creadas todavía.</p>
+    {% endif %}
+
+    <!-- Formulario crear / editar -->
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            {% if editar_cat %}
+            <h6 class="fw-bold text-uppercase small text-muted mb-3">Editar Categoría</h6>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="editar">
+                <input type="hidden" name="cat_id" value="{{ editar_cat.id }}">
+                <div class="d-flex gap-2">
+                    <input type="text" name="nombre" value="{{ editar_cat.nombre }}"
+                           class="form-control rounded-3" placeholder="Nombre de la categoría" required>
+                    <button type="submit" class="btn btn-action btn-primary-japandi px-4 rounded-3">Guardar</button>
+                    <a href="{% url 'lista_categorias' %}" class="btn btn-outline-secondary px-3 rounded-3">✕</a>
+                </div>
+            </form>
+            {% else %}
+            <h6 class="fw-bold text-uppercase small text-muted mb-3">Nueva Categoría</h6>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="crear">
+                <div class="d-flex gap-2">
+                    <input type="text" name="nombre" class="form-control rounded-3"
+                           placeholder="Ej. Entradas, Postres, Bebidas…" required>
+                    <button type="submit" class="btn btn-action btn-primary-japandi px-4 rounded-3">+ Crear</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

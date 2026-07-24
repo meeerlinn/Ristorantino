@@ -1,0 +1,465 @@
+/* ==========================================
+   1. GLOBAL & VARIABLES
+   ========================================== */
+:root {
+    --japandi-bg: #f8f6f4;
+    --japandi-dark: #2d2d2d;
+    --accent: #84a59d; /* Verde salvia sutil */
+    --libre: #84a59d;
+    --ocupada: #f28482;
+    --reservada: #f7d177;
+    --sucia: #b5b5b5;
+    --white: #ffffff;
+}
+
+body { 
+    background-color: var(--japandi-bg); 
+    font-family: 'Inter', sans-serif;
+    color: var(--japandi-dark);
+    margin-bottom: 50px;
+}
+
+.btn-action {
+    border-radius: 18px;
+    padding: 18px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    text-decoration: none;
+}
+
+.btn-action:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.08);
+}
+
+.btn-primary-japandi {
+    background-color: var(--japandi-dark);
+    color: white;
+}
+
+.btn-secondary-japandi {
+    background-color: white;
+    color: var(--japandi-dark);
+}
+
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* ==========================================
+   2. NAVBAR
+   ========================================== */
+.navbar { 
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.navbar-brand { font-family: 'Poppins', sans-serif; letter-spacing: 1px; }
+
+.user-profile-pill {
+    background: #ffffff;
+    border-radius: 50px;
+    border: 1px solid rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+}
+
+.user-profile-pill:hover {
+    border-color: var(--accent);
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    background-color: var(--japandi-dark);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.user-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--japandi-dark);
+}
+
+.user-role {
+    font-size: 0.6rem;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.btn-logout-minimal {
+    background: #fff5f5;
+    border: none;
+    color: #dc3545;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.btn-logout-minimal:hover {
+    background-color: #dc3545;
+    color: white;
+    transform: rotate(-10deg);
+}
+
+/* ==========================================
+   3. MESAS
+   ========================================== */
+.leyenda-container {
+    background: var(--white);
+    border-radius: 15px;
+    padding: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.leyenda-item { display: flex; align-items: center; font-size: 0.85rem; font-weight: 500; }
+.dot { width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; }
+
+.sector-title {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.2rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin: 40px 0 20px 0;
+    display: flex;
+    align-items: center;
+}
+.sector-title::after {
+    content: "";
+    height: 1px;
+    background: #ddd;
+    flex-grow: 1;
+    margin-left: 20px;
+}
+
+.mesa-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 50px;
+    padding: 20px 0;
+}
+
+.mesa-wrapper {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin: auto;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    cursor: pointer;
+}
+.rectangular { width: 240px; }
+.mesa-wrapper:hover { transform: translateY(-10px); }
+
+.mesa-card {
+    position: absolute;
+    top: 20px; left: 20px; right: 20px; bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+    border: none;
+    border-radius: 16px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(0,0,0,0.05));
+}
+.rectangular .mesa-card { left: 35px; right: 35px; }
+
+.chair-dot {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background-color: #e0e0e0;
+    z-index: 1;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.Libre .mesa-card { background-color: var(--libre); color: white; }
+.Libre .chair-dot { background-color: var(--libre); opacity: 0.5; }
+.Ocupada .mesa-card { background-color: var(--ocupada); color: white; }
+.Ocupada .chair-dot { background-color: var(--ocupada); opacity: 0.5; }
+.Reservada .mesa-card { background-color: var(--reservada); color: var(--japandi-dark); }
+.Reservada .chair-dot { background-color: var(--reservada); opacity: 0.8; }
+.Sucia .mesa-card { background-color: var(--sucia); color: white; }
+.Sucia .chair-dot { background-color: var(--sucia); opacity: 0.5; }
+
+.chair-top { top: -2px; left: 50%; transform: translateX(-50%); }
+.chair-bottom { bottom: -2px; left: 50%; transform: translateX(-50%); }
+.chair-left { top: 50%; left: -2px; transform: translateY(-50%); }
+.chair-right { top: 50%; right: -2px; transform: translateY(-50%); }
+.chair-t1 { top: -2px; left: 25%; }
+.chair-t2 { top: -2px; left: 50%; transform: translateX(-50%); }
+.chair-t3 { top: -2px; right: 25%; }
+.chair-b1 { bottom: -2px; left: 25%; }
+.chair-b2 { bottom: -2px; left: 50%; transform: translateX(-50%); }
+.chair-b3 { bottom: -2px; right: 25%; }
+
+.nro-mesa { font-size: 2.2rem; font-weight: 700; margin: 0; line-height: 1; font-family: 'Poppins', sans-serif; }
+.estado-texto { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 5px; font-weight: 700; }
+.capacidad { font-size: 0.7rem; background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: 20px; margin-top: 5px; }
+.Reservada .capacidad { background: rgba(0,0,0,0.05); }
+
+/* ==========================================
+   4. MODALES
+   ========================================== */
+.modal-content {
+    border: none;
+    border-radius: 28px;
+    background-color: var(--japandi-bg);
+}
+.modal-header { padding: 2rem 2rem 1rem; }
+
+/* ==========================================
+   5. LOGIN
+   ========================================== */
+.body-login {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    background-image: radial-gradient(rgba(45, 45, 45, 0.03) 1px, transparent 1px);
+    background-size: 30px 30px;
+}
+
+.login-container { width: 100%; max-width: 420px; padding: 20px; }
+.login-card {
+    background: var(--white);
+    padding: 45px;
+    border-radius: 35px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.04);
+    border: 1px solid rgba(0,0,0,0.02);
+    text-align: center;
+}
+.brand-logo {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.8rem;
+    letter-spacing: 2px;
+    color: var(--japandi-dark);
+    margin-bottom: 10px;
+    display: block;
+}
+.subtitle { font-size: 0.85rem; color: #888; margin-bottom: 35px; letter-spacing: 0.5px; }
+.form-floating > .form-control {
+    border-radius: 18px;
+    border: 1px solid #eee;
+    background-color: #fafafa;
+    padding-left: 20px;
+}
+.form-floating > .form-control:focus {
+    box-shadow: 0 0 0 4px rgba(132, 165, 157, 0.1);
+    border-color: var(--accent);
+    background-color: #fff;
+}
+.btn-login {
+    background-color: var(--japandi-dark);
+    color: white;
+    border: none;
+    border-radius: 18px;
+    padding: 16px;
+    width: 100%;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    margin-top: 15px;
+}
+.btn-login:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    background-color: #000;
+}
+.error-msg {
+    background-color: #fff5f5;
+    color: #c53030;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    margin-bottom: 20px;
+    border: 1px solid #feb2b2;
+}
+.footer-text { margin-top: 30px; font-size: 0.75rem; color: #bbb; }
+
+/* ==========================================
+   6. PANTALLA DE COMANDA (TOMA DE PEDIDOS)
+   ========================================== */
+.comanda-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 20px;
+    height: calc(100vh - 160px);
+    overflow: hidden;
+}
+
+.comanda-column {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 24px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+    overflow-y: auto;
+}
+
+.categories-container {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+    scrollbar-width: thin;
+}
+
+.cat-btn {
+    border: none;
+    background: var(--japandi-bg);
+    color: var(--japandi-dark);
+    padding: 12px 24px;
+    border-radius: 50px;
+    text-align: left;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.cat-btn:hover, .cat-btn.active {
+    background: var(--japandi-dark);
+    color: white;
+}
+
+.product-card-sm {
+    background: var(--japandi-bg);
+    border-radius: 20px;
+    padding: 15px;
+    text-align: center;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: 2px solid transparent;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-decoration: none;
+    color: inherit;
+}
+
+.product-card-sm:hover {
+    border-color: var(--accent);
+    background: white;
+    transform: translateY(-3px);
+}
+
+.cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--japandi-bg);
+}
+
+.cart-total-box {
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 2px dashed var(--japandi-bg);
+}
+
+.product-card-img {
+    width: 100%;
+    height: 90px;
+    min-height: 90px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.product-card-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.product-card-img--empty {
+    background: var(--japandi-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+}
+
+.cart-item-remove {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--japandi-bg);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.15s ease;
+    padding: 0;
+}
+
+.cart-item-remove svg {
+    width: 13px;
+    height: 13px;
+    stroke: #a09890;
+    transition: stroke 0.2s ease;
+}
+
+.cart-item-remove:hover {
+    background: #fde8e8;
+    transform: scale(1.15);
+}
+
+.cart-item-remove:hover svg {
+    stroke: #c0392b;
+}
+
+/* ==========================================
+   7. ESTILOS ESPECÍFICOS COCINA
+   ========================================== */
+.card-kitchen {
+    background-color: var(--japandi-bg) !important; /* Color hueso */
+    border: none;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+}
+
+.btn-wood-green {
+    background-color: var(--accent) !important; /* Verde madera */
+    color: white !important;
+    border-radius: 12px;
+    font-weight: 600;
+    transition: opacity 0.2s;
+}
+
+.btn-wood-green:hover { opacity: 0.85; }

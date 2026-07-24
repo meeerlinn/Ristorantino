@@ -1,0 +1,111 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Reservaciones — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:900px;">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="fw-bold m-0">📅 Reservaciones</h2>
+        <div class="d-flex gap-2">
+            <a href="?vista=hoy"
+               class="btn btn-sm {% if vista == 'hoy' %}btn-primary-japandi{% else %}btn-secondary-japandi{% endif %} btn-action px-3">
+               Hoy
+            </a>
+            <a href="?vista=semana"
+               class="btn btn-sm {% if vista == 'semana' %}btn-primary-japandi{% else %}btn-secondary-japandi{% endif %} btn-action px-3">
+               Esta semana
+            </a>
+        </div>
+    </div>
+
+    {% if reservaciones %}
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" style="font-size:0.875rem;">
+                    <thead style="background:#f8f6f4;">
+                        <tr>
+                            <th class="px-3 py-3">Hora</th>
+                            <th>Mesa</th>
+                            <th>Cliente</th>
+                            <th class="text-center">Personas</th>
+                            <th>Observaciones</th>
+                            <th>Registrado por</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for r in reservaciones %}
+                    <tr>
+                        <td class="px-3">
+                            <strong>{{ r.fecha_reserva|date:"d/m" }}</strong>
+                            <span class="text-muted ms-1">{{ r.fecha_reserva|date:"H:i" }}</span>
+                        </td>
+                        <td>Mesa {{ r.mesa.numero_mesa }} <span class="text-muted small">({{ r.mesa.sector.nombre }})</span></td>
+                        <td>{{ r.cliente.nombre_razon_social }}</td>
+                        <td class="text-center">{{ r.cantidad_personas }}</td>
+                        <td class="text-muted small">{{ r.observaciones|default:"—" }}</td>
+                        <td class="text-muted small">
+                            {% if r.empleado.empleado %}
+                                {{ r.empleado.empleado.nombre }}
+                            {% else %}
+                                {{ r.empleado.username }}
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <form method="post" action="{% url 'activar_mesa_reservada' r.id %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit"
+                                        class="btn btn-sm btn-action btn-primary-japandi py-1 px-2 me-1"
+                                        style="font-size:0.75rem;">
+                                    🍽️ Activar
+                                </button>
+                            </form>
+                            <button class="btn btn-sm btn-outline-danger py-1 px-2"
+                                    style="font-size:0.75rem; border-radius:20px;"
+                                    data-bs-toggle="modal" data-bs-target="#modalCancelar{{ r.id }}">
+                                Cancelar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+        <p class="fs-3">📅</p>
+        <p>No hay reservaciones {% if vista == 'hoy' %}para hoy{% else %}para esta semana{% endif %}.</p>
+    </div>
+    {% endif %}
+
+</div>
+
+{# Modales de cancelación #}
+{% for r in reservaciones %}
+<div class="modal fade" id="modalCancelar{{ r.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content shadow-lg border-0" style="border-radius:20px;">
+            <div class="modal-body p-4 text-center">
+                <div class="mb-3 fs-3">⚠️</div>
+                <h5 class="fw-bold">¿Cancelar reserva?</h5>
+                <p class="text-muted small">
+                    Mesa {{ r.mesa.numero_mesa }} — {{ r.cliente.nombre_razon_social }}<br>
+                    {{ r.fecha_reserva|date:"d/m/Y H:i" }}
+                </p>
+                <form method="post" action="{% url 'cancelar_reservacion' r.id %}">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger rounded-pill py-2">Sí, cancelar</button>
+                        <button type="button" class="btn btn-light rounded-pill py-2" data-bs-dismiss="modal">No</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

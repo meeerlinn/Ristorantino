@@ -1,0 +1,308 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Vista de Cocina | Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+
+    {# ── Encabezado con barra de estado ── #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold m-0">👨‍🍳 Monitor de Cocina</h2>
+        <div class="d-flex align-items-center gap-3">
+            <span id="estado-conexion" title="Estado de conexión" style="font-size:1.1rem; color: #6c757d;">●</span>
+            <span class="text-muted small">
+                Actualizado: <strong id="ultima-actualizacion">--:--:--</strong>
+            </span>
+            <span class="badge bg-light text-dark border">
+                Refresca en <span id="countdown">20</span>s
+            </span>
+        </div>
+    </div>
+
+    {# ── Grid de tarjetas (renderizado inicial por Django, luego por JS) ── #}
+    <div class="row g-3" id="pedidos-container">
+        {% for item in detalles %}
+        <div class="col-sm-6 col-lg-4 col-xl-3" data-item-id="{{ item.id }}">
+            <div class="kds-card {% if item.estado_actual == 'Cocina' %}kds-card--cocina{% endif %}">
+
+                {# Banda superior: mesa + estado #}
+                <div class="kds-card__header">
+                    <span class="kds-mesa">Mesa {{ item.pedido.mesa.numero_mesa }}</span>
+                    <span class="kds-badge {% if item.estado_actual == 'Cocina' %}kds-badge--cocina{% else %}kds-badge--pendiente{% endif %}">
+                        {% if item.estado_actual == 'Cocina' %}🔥 En Cocina{% else %}⏱ Pendiente{% endif %}
+                    </span>
+                </div>
+
+                {# Producto #}
+                <div class="kds-card__body">
+                    <div class="kds-cantidad">{{ item.cantidad }}</div>
+                    <div class="kds-producto">{{ item.producto.nombre }}</div>
+                    {% if item.observaciones %}
+                    <div class="kds-nota">📝 {{ item.observaciones }}</div>
+                    {% endif %}
+                </div>
+
+                {# Footer: tiempo + botón #}
+                <div class="kds-card__footer">
+                    <span class="kds-tiempo">⏳ {{ item.fecha_estado|timesince }}</span>
+                    {% if item.estado_actual == 'Pendiente' %}
+                    <a href="{% url 'cambiar_estado_cocina' item.id 'Cocina' %}" class="kds-btn kds-btn--empezar">Empezar →</a>
+                    {% elif item.estado_actual == 'Cocina' %}
+                    <a href="{% url 'cambiar_estado_cocina' item.id 'Listo' %}" class="kds-btn kds-btn--listo">✓ Listo</a>
+                    {% endif %}
+                </div>
+
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5" id="empty-msg">
+            <h4 class="text-muted">No hay pedidos pendientes. ¡Buen trabajo!</h4>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.kds-card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1.5px solid #e8e2db;
+    transition: box-shadow 0.2s;
+}
+.kds-card--cocina {
+    border-color: #e8a020;
+    box-shadow: 0 2px 16px rgba(232,160,32,0.18);
+}
+.kds-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid #f0ebe4;
+}
+.kds-mesa {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #3d3530;
+    letter-spacing: 0.5px;
+}
+.kds-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 50px;
+}
+.kds-badge--pendiente { background: #f0ebe4; color: #7a6f66; }
+.kds-badge--cocina    { background: #fff3cd; color: #856404; }
+
+.kds-card__body {
+    padding: 16px;
+    flex-grow: 1;
+}
+.kds-cantidad {
+    font-size: 2.4rem;
+    font-weight: 900;
+    color: #4a7c59;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.kds-producto {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #3d3530;
+    line-height: 1.2;
+}
+.kds-nota {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #fff8e7;
+    border-left: 3px solid #e8a020;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.82rem;
+    color: #6d5c00;
+    font-style: italic;
+}
+
+.kds-card__footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px 14px;
+    border-top: 1px solid #f0ebe4;
+}
+.kds-tiempo {
+    font-size: 0.75rem;
+    color: #a09080;
+}
+.kds-btn {
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 6px 16px;
+    border-radius: 50px;
+    text-decoration: none;
+    transition: opacity 0.15s;
+}
+.kds-btn:hover { opacity: 0.85; }
+.kds-btn--empezar { background: #4a7c59; color: white; }
+.kds-btn--listo   { background: #2e7d32; color: white; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const INTERVALO   = 20;           // segundos entre refrescos
+const URL_DATOS   = "{% url 'cocina_datos_ajax' %}";
+let conocidos     = new Set();    // IDs de ítems visibles en el último refresco
+let countdown     = INTERVALO;
+let primeraVez    = true;
+
+/* ── Inicializar set con los ítems ya renderizados por Django ── */
+document.querySelectorAll('[data-item-id]').forEach(el => conocidos.add(el.dataset.itemId));
+
+/* ── Escape HTML para evitar XSS al insertar datos del servidor ── */
+function esc(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/* ── Renderiza una tarjeta de pedido a partir de un objeto JSON ── */
+function renderCard(item) {
+    const enCocina = item.estado_actual === 'Cocina';
+    const badgeClass = enCocina ? 'kds-badge--cocina' : 'kds-badge--pendiente';
+    const badgeLabel = enCocina ? '🔥 En Cocina' : '⏱ Pendiente';
+    const cardClass  = enCocina ? 'kds-card kds-card--cocina' : 'kds-card';
+    const obs = item.observaciones
+        ? `<div class="kds-nota">📝 ${esc(item.observaciones)}</div>`
+        : '';
+    const btnClass = enCocina ? 'kds-btn kds-btn--listo' : 'kds-btn kds-btn--empezar';
+    const btnLabel = enCocina ? '✓ Listo' : 'Empezar →';
+    const btn = item.btn_label
+        ? `<a href="${esc(item.url_siguiente)}" class="${btnClass}">${btnLabel}</a>`
+        : '';
+
+    return `
+    <div class="col-sm-6 col-lg-4 col-xl-3" data-item-id="${item.id}">
+        <div class="${cardClass}">
+            <div class="kds-card__header">
+                <span class="kds-mesa">Mesa ${esc(item.mesa)}</span>
+                <span class="kds-badge ${badgeClass}">${badgeLabel}</span>
+            </div>
+            <div class="kds-card__body">
+                <div class="kds-cantidad">${esc(item.cantidad)}</div>
+                <div class="kds-producto">${esc(item.producto)}</div>
+                ${obs}
+            </div>
+            <div class="kds-card__footer">
+                <span class="kds-tiempo">⏳ ${esc(item.hace)}</span>
+                ${btn}
+            </div>
+        </div>
+    </div>`;
+}
+
+/* ── Beep suave con Web Audio API ── */
+function beep() {
+    try {
+        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type            = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.5);
+    } catch (e) { /* navegador sin soporte */ }
+}
+
+/* ── Destello amarillo en tarjetas nuevas ── */
+function destacarNuevos(nuevosIds) {
+    nuevosIds.forEach(id => {
+        const col = document.querySelector(`[data-item-id="${id}"]`);
+        if (!col) return;
+        const card = col.querySelector('.card');
+        if (!card) return;
+        card.style.transition = 'background-color 0s';
+        card.style.backgroundColor = '#fff9c4';
+        setTimeout(() => {
+            card.style.transition = 'background-color 1.5s ease';
+            card.style.backgroundColor = '';
+        }, 50);
+    });
+}
+
+/* ── Función principal de refresco ── */
+async function refrescar() {
+    const elConexion    = document.getElementById('estado-conexion');
+    const elHora        = document.getElementById('ultima-actualizacion');
+    const container     = document.getElementById('pedidos-container');
+
+    try {
+        const resp = await fetch(URL_DATOS, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        /* Detectar ítems nuevos */
+        const idsActuales = new Set(data.items.map(i => String(i.id)));
+        const nuevosIds   = data.items
+            .filter(i => !conocidos.has(String(i.id)))
+            .map(i => String(i.id));
+
+        if (!primeraVez && nuevosIds.length > 0) {
+            beep();
+        }
+        conocidos  = idsActuales;
+        primeraVez = false;
+
+        /* Renderizar tarjetas */
+        if (data.items.length === 0) {
+            container.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <h4 class="text-muted">No hay pedidos pendientes. ¡Buen trabajo!</h4>
+                </div>`;
+        } else {
+            container.innerHTML = data.items.map(renderCard).join('');
+            destacarNuevos(nuevosIds);
+        }
+
+        /* Estado conexión OK */
+        elHora.textContent          = data.hora;
+        elConexion.textContent      = '●';
+        elConexion.style.color      = '#198754'; /* verde */
+        elConexion.title            = 'Conexión activa';
+
+    } catch (err) {
+        /* Estado conexión ERROR */
+        elConexion.textContent = '●';
+        elConexion.style.color = '#dc3545'; /* rojo */
+        elConexion.title       = 'Error de conexión — reintentando...';
+        console.warn('[Cocina] Error al refrescar:', err);
+    }
+}
+
+/* ── Contador regresivo (tick cada 1s) ── */
+const elCountdown = document.getElementById('countdown');
+setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+        countdown = INTERVALO;
+        refrescar();
+    }
+    elCountdown.textContent = countdown;
+}, 1000);
+
+/* ── Primer refresco inmediato al cargar ── */
+refrescar();
+</script>
+{% endblock %}

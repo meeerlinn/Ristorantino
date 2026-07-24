@@ -1,0 +1,67 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Configuración — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:620px;">
+
+    <div class="mb-4">
+        <h2 class="fw-bold m-0">⚙️ Configuración del Restaurante</h2>
+        <p class="text-muted small mt-1">Estos datos aparecen en las facturas y en el sistema.</p>
+    </div>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="alert alert-{{ msg.tags }} alert-dismissible fade show rounded-3 mb-3" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Nombre del Restaurante</label>
+                    <input type="text" name="nombre" value="{{ config.nombre }}" class="form-control rounded-3"
+                           placeholder="Ej. Ristorantino" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">RUC</label>
+                    <input type="text" name="ruc" value="{{ config.ruc }}" class="form-control rounded-3"
+                           placeholder="Ej. 80123456-7">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Dirección</label>
+                    <input type="text" name="direccion" value="{{ config.direccion }}" class="form-control rounded-3"
+                           placeholder="Ej. Av. España 1234, Asunción">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Teléfono</label>
+                    <input type="text" name="telefono" value="{{ config.telefono }}" class="form-control rounded-3"
+                           placeholder="Ej. 021-123456">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Tasa de IVA (%)</label>
+                    <select name="tasa_iva" class="form-select rounded-3">
+                        <option value="10" {% if config.tasa_iva == 10 %}selected{% endif %}>10%</option>
+                        <option value="5" {% if config.tasa_iva == 5 %}selected{% endif %}>5%</option>
+                    </select>
+                    <div class="text-muted small mt-1">Se usa para el cálculo de IVA incluido en las facturas.</div>
+                </div>
+
+                <button type="submit" class="btn btn-action btn-primary-japandi w-100 py-2 fw-bold">
+                    Guardar Configuración
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

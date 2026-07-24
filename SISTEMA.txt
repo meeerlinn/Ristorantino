@@ -1,0 +1,754 @@
+================================================================================
+  RISTORANTINO — DOCUMENTACIÓN DEL SISTEMA
+  Sistema de Gestión para Restaurantes
+  Versión: 1.0 | Framework: Django 6.0.3 | Base de datos: PostgreSQL
+================================================================================
+
+ÍNDICE
+------
+  1.  Descripción General
+  2.  Stack Tecnológico
+  3.  Roles y Permisos
+  4.  Módulo: Salón (Gestión de Mesas)
+  5.  Módulo: Comanda (Toma de Pedidos)
+  6.  Módulo: Cocina (Monitor de Preparación)
+  7.  Módulo: Caja (Arqueo y Cobro)
+  8.  Módulo: Factura (Impresión Fiscal)
+  9.  Módulo: Dashboard (KPIs y Analíticas)
+ 10.  Módulo: Historial (Pedidos Cerrados)
+ 11.  Módulo: Reservaciones
+ 12.  Módulo: Clientes
+ 13.  Módulo: Menú (Productos y Categorías)
+ 14.  Módulo: Configuración del Restaurante
+ 15.  Endpoints AJAX
+ 16.  Modelo de Datos
+ 17.  Configuración del Entorno
+
+
+================================================================================
+1. DESCRIPCIÓN GENERAL
+================================================================================
+
+Ristorantino es un sistema de gestión integral para restaurantes, diseñado
+específicamente para el mercado paraguayo. Cubre el ciclo completo de operación:
+
+  · Apertura y gestión de mesas en el salón
+  · Toma de pedidos en mesa (comanda digital)
+  · Monitoreo de preparación en cocina (pantalla KDS)
+  · Cobro y generación de facturas fiscales con timbrado
+  · Reservas de mesa con control de conflictos
+  · Gestión de clientes con RUC/CI
+  · Analíticas de ventas, margen y rendimiento del personal
+  · Administración del menú (productos, categorías, imágenes)
+  · Configuración del restaurante (nombre, RUC, dirección, IVA)
+
+El sistema corre en un navegador web, no requiere instalación en cada terminal.
+Moneda: Guaraní paraguayo (Gs.) — valores sin decimales.
+IVA: 10% incluido en el precio (divisor 11 para desdoblar). También soporta 5%.
+Timezone: America/Asuncion (UTC-4 en invierno, UTC-3 en verano).
+
+
+================================================================================
+2. STACK TECNOLÓGICO
+================================================================================
+
+  Backend:   Django 6.0.3 (Python 3.14)
+  Base de datos: PostgreSQL 15+ (base: "ristorantino", usuario: postgres)
+  Frontend:  Bootstrap 5.3.0 (CDN) + CSS Japandi personalizado
+  Gráficos:  Chart.js 4 (CDN, sin instalación npm)
+  Imágenes:  Pillow (manejo de ImageField en productos)
+  Auth:      Django built-in User + modelo Empleado con Rol
+
+  Archivos clave:
+    core/settings.py       — Configuración Django
+    core/urls.py           — URLconf raíz + handler404/500
+    pedidos/models.py      — 17 modelos de datos
+    pedidos/views.py       — ~39 vistas
+    pedidos/urls.py        — ~36 rutas URL
+    pedidos/decorators.py  — Decorator @requiere_rol
+    pedidos/admin.py       — Panel de administración
+    pedidos/templates/     — 20 templates HTML
+    static/pedidos/css/style.css — Hoja de estilos principal
+
+
+================================================================================
+3. ROLES Y PERMISOS
+================================================================================
+
+El sistema usa un decorator personalizado @requiere_rol(*roles) que verifica
+request.user.empleado.rol.nombre. Los superusuarios de Django siempre tienen
+acceso completo.
+
+CUATRO ROLES DISPONIBLES:
+--------------------------
+
+  MOZO
+    · Salón: ver y abrir mesas, marcar como sucia
+    · Comanda: tomar pedidos, agregar/eliminar productos
+    · Reservaciones: ver, crear, cancelar, activar mesas reservadas
+    · NO puede: cobrar, ver historial, ver dashboard, acceder a caja
+
+  CAJERO
+    · Todo lo de Mozo, más:
+    · Caja: abrir/cerrar arqueo
+    · Cobrar pedidos y generar facturas
+    · Historial de pedidos y anulaciones
+    · Dashboard con KPIs y analíticas
+    · Clientes: crear, editar, buscar
+    · Menú: crear/editar productos y categorías
+    · Bloquear mesas (toggle Libre ↔ Reservada)
+    · Toggle disponibilidad de productos (Agotado / Disponible)
+
+  CHEF
+    · Monitor de cocina: ver ítems pendientes y en preparación
+    · Avanzar estado de preparación (Pendiente → Cocina → Listo)
+    · NO puede: ver salón, cobrar, ver dashboard
+
+  ADMINISTRADOR
+    · Acceso completo, igual que superusuario Django
+    · Configuración del restaurante (única vista exclusiva para Admin)
+
+  SUPERUSUARIO DJANGO
+    · Acceso total a todo, incluido /admin/ de Django
+    · Bypasea cualquier restricción de rol
+
+ACCESO DENEGADO:
+  Si un usuario intenta acceder a una URL sin el rol correcto, es
+  redirigido al salón con un mensaje de error.
+
+LOGIN / LOGOUT:
+  · Login:  /accounts/login/   → redirige a /salon/ tras autenticarse
+  · Logout: /accounts/logout/  → redirige a /accounts/login/
+
+
+================================================================================
+4. MÓDULO: SALÓN (Gestión de Mesas)
+================================================================================
+
+URL: /salon/
+Rol: Todos los autenticados
+
+DESCRIPCIÓN:
+  Pantalla principal del sistema. Muestra todas las mesas del restaurante
+  agrupadas por sector (Salón Principal, Barra, Terraza, etc.) en una grilla.
+  Cada mesa se representa visualmente con sillas.
+
+ESTADOS DE MESA:
+  · LIBRE     — Mesa desocupada, disponible para abrir pedido o reservar
+  · OCUPADA   — Mesa con pedido activo (Pendiente)
+  · RESERVADA — Mesa bloqueada por reservación confirmada
+  · SUCIA     — Mesa que necesita limpieza (tras cobrar o marcar manualmente)
+
+ACCIONES DISPONIBLES POR ESTADO:
+  Libre:
+    · "Abrir Nuevo Pedido" → crea un Pedido y va a la comanda
+    · "Reservar Mesa" → abre formulario de reserva (si es Libre o Sucia)
+    · [Cajero/Admin] Botón para bloquear (ponerla en Reservada)
+
+  Ocupada:
+    · "Ver Comanda" → va a la pantalla de pedido activo
+    · "Cobrar" → va directamente al cobro (solo Cajero/Admin)
+    · [Mozo/todos] Botón para marcar como Sucia
+
+  Reservada:
+    · "Activar Mesa" → convierte la reserva a pedido activo
+    · [Cajero/Admin] Desbloquear (pone en Libre)
+
+  Sucia:
+    · "Abrir Nuevo Pedido" → se puede abrir igual desde Sucia
+    · La limpieza no cambia el estado automáticamente
+
+ACCIONES AJAX (sin recargar la página):
+  POST /mesa/<id>/marcar-sucia/
+    Cambia estado de mesa a Sucia. Responde: {"ok": true, "estado": "Sucia"}
+
+  POST /mesa/<id>/bloquear/      [solo Cajero/Admin]
+    Alterna Libre ↔ Reservada. Responde: {"ok": true, "estado": "..."}
+
+
+================================================================================
+5. MÓDULO: COMANDA (Toma de Pedidos)
+================================================================================
+
+URL: /pedido/<id>/tomar/
+Rol: Todos los autenticados
+
+DESCRIPCIÓN:
+  Pantalla de toma de pedido. Diseño de dos columnas:
+  · Izquierda: catálogo de productos filtrable por categoría
+  · Derecha: resumen del pedido actual con ítems y total
+
+FUNCIONALIDADES:
+  Agregar producto:
+    · Click en la tarjeta del producto → AJAX agrega al pedido
+    · Si el producto ya está en el pedido, incrementa la cantidad
+    · POST /pedido/<id>/agregar-ajax/<producto_id>/
+    · Responde: {"total": "150000", "items": [...]}
+
+  Editar cantidad:
+    · Input numérico junto a cada ítem (solo en estado Pendiente)
+    · Al cambiar el valor → AJAX actualiza cantidad y recalcula total
+    · POST /pedido/<id>/cantidad/<detalle_id>/
+    · Si el ítem ya pasó a Cocina o posterior: devuelve error 400
+
+  Eliminar ítem:
+    · Botón X junto a cada ítem (solo si no está en Cocina/Listo/Entregado)
+    · POST /pedido/<id>/eliminar-detalle/<detalle_id>/
+
+  Toggle disponibilidad [solo Cajero/Admin]:
+    · Cada producto tiene un botón "✓ Disponible" o "✗ Agotado — Reactivar"
+    · AJAX cambia disponible=True/False y recarga la página
+    · POST /producto/<id>/toggle-disponible/
+    · Productos no disponibles aparecen greyed-out con badge "Agotado"
+    · Los mozos solo ven el estado, no pueden cambiarlo
+
+  Filtro por categoría:
+    · Botones en la parte superior → filtra las cards del catálogo sin AJAX
+
+  Ir a Cobrar:
+    · Solo visible para Cajero/Admin
+    · Enlace a /pedido/<id>/cobrar/
+
+  Volver al Salón:
+    · Si el pedido está vacío, elimina el pedido y libera la mesa
+    · Si tiene ítems, solo navega al salón (pedido queda activo)
+
+ESTADO FISCAL:
+  Cuando se crea un PedidoDetalle, se captura automáticamente el
+  precio_historico (precio de venta vigente). Cambios futuros al
+  precio del producto no afectan pedidos ya tomados.
+
+
+================================================================================
+6. MÓDULO: COCINA (Monitor de Preparación)
+================================================================================
+
+URL: /cocina/
+Rol: Chef, Administrador
+
+DESCRIPCIÓN:
+  Pantalla tipo KDS (Kitchen Display System). Muestra todos los ítems de
+  pedidos activos que están en estado Pendiente o En Cocina.
+
+FLUJO DE ESTADOS:
+  Pendiente → [click "Empezar"] → Cocina → [click "Listo"] → Listo
+
+  Desde la comanda: cuando un ítem está Listo, el mozo puede hacer click
+  en "✓ Entregar" para marcarlo como Entregado.
+
+ORDENAMIENTO:
+  Los ítems se muestran ordenados por fecha de apertura del pedido (FIFO):
+  el pedido más antiguo se muestra primero.
+
+DATOS MOSTRADOS:
+  · Mesa y número de pedido
+  · Nombre del producto
+  · Cantidad pedida
+  · Tiempo en estado actual (para detectar demoras)
+
+AVANZAR ESTADO:
+  · GET /cocina/estado/<detalle_id>/<nuevo_estado>/
+  · El sistema crea un registro en FlujoEstado con timestamp automático
+  · Esto permite calcular tiempos de preparación en el dashboard
+
+
+================================================================================
+7. MÓDULO: CAJA (Arqueo y Cobro)
+================================================================================
+
+CAJA PRINCIPAL
+URL: /caja/
+Rol: Cajero, Administrador
+
+  Muestra el estado de la caja del usuario actual:
+  · Arqueo activo (si hay uno abierto): nombre de caja, hora de apertura,
+    monto de apertura, total vendido en el turno, cantidad de facturas,
+    monto esperado al cierre
+  · Si no hay arqueo abierto: formulario para seleccionar caja y monto inicial
+
+ABRIR CAJA:
+  POST /caja/abrir/
+  · Crea un Arqueo con estado='Abierto'
+  · Solo puede haber un arqueo abierto por usuario a la vez
+
+CERRAR CAJA:
+  POST /caja/cerrar/<arqueo_id>/
+  · El cajero ingresa el monto real en efectivo
+  · El sistema calcula: diferencia = monto_real - (apertura + ventas_sistema)
+  · Guarda fecha_cierre y cambia estado a 'Cerrado'
+
+COBRAR PEDIDO
+URL: /pedido/<id>/cobrar/
+Rol: Cajero, Administrador
+
+  Pantalla de cobro con:
+  · Detalle de ítems con precios históricos
+  · Búsqueda de cliente por nombre o RUC/CI (AJAX typeahead)
+  · Selección de método de pago: Efectivo / Tarjeta / QR / Mixto
+  · Campo de descuento en Gs. (validado: no puede superar el total)
+  · Cálculo de IVA 10% incluido en tiempo real
+  · Campo "Efectivo recibido" (visible solo en pago Efectivo): calcula
+    el vuelto en tiempo real; muestra en rojo si falta, verde si alcanza
+
+PROCESO DE COBRO:
+  1. Verifica que haya caja abierta y timbrado activo/vigente
+  2. Genera número de factura: SERIE-PUNTO_EXPEDICION-0000001
+  3. Crea DocumentoTributario con IVA desglosado
+  4. Vincula el documento al pedido vía PedidoDocumento
+  5. Suma el total al monto_cierre_sistema del arqueo
+  6. Marca pedido como Pagado, registra fecha_cierre
+  7. Marca la mesa como Sucia
+  8. Redirige a la pantalla de factura para impresión
+
+CLIENTE OCASIONAL:
+  Si no se selecciona cliente, se usa automáticamente el registro
+  "Sin Nombre / Ocasional" (RUC='0').
+
+
+================================================================================
+8. MÓDULO: FACTURA (Impresión Fiscal)
+================================================================================
+
+URL: /pedido/<id>/factura/
+Rol: Cajero, Administrador
+
+DESCRIPCIÓN:
+  Pantalla de factura optimizada para impresión. Diseño de 320px de ancho,
+  compatible con impresoras térmicas de 80mm.
+
+DATOS MOSTRADOS:
+  · Nombre y datos del restaurante (desde ConfiguracionRestaurante)
+  · Número de timbrado y fecha de vencimiento
+  · Número de factura (serie-punto-secuencial)
+  · Fecha y hora del cobro (timezone Paraguay)
+  · Mesa y número de pedido
+  · Datos del cliente (nombre + RUC/CI) o "Consumidor Final"
+  · Tabla de ítems: nombre, cantidad, precio unitario, subtotal
+  · Descuento aplicado (si hay)
+  · IVA incluido (10% o 5% según configuración)
+  · Total a pagar en Guaraníes
+  · Método de pago utilizado
+
+BOTONES (ocultos al imprimir):
+  · "🖨️ Imprimir" → ejecuta window.print()
+  · "← Volver al Salón"
+
+CSS DE IMPRESIÓN:
+  @media print oculta navbar, botones y fondo. Solo se imprime la factura.
+
+REIMPRIMIR:
+  Disponible desde /pedidos/<id>/detalle-historial/ con botón
+  "🖨️ Reimprimir Factura" que va a la misma URL.
+
+
+================================================================================
+9. MÓDULO: DASHBOARD (KPIs y Analíticas)
+================================================================================
+
+URL: /dashboard/
+Rol: Cajero, Administrador
+
+DESCRIPCIÓN:
+  Panel de control con métricas de negocio. Filtrable por rango de fechas
+  (fecha_desde / fecha_hasta via GET params).
+
+KPIs DISPONIBLES:
+  1. VENTAS GENERALES
+     · Total facturado en el período
+     · Cantidad de tickets (pedidos pagados)
+     · Ticket promedio
+
+  2. MÉTODOS DE PAGO
+     · Tabla: método, total en Gs., cantidad de pagos
+     · Gráfico donut (Chart.js): distribución visual
+
+  3. MARGEN POR PRODUCTO (top 10 por revenue)
+     · Nombre del producto, categoría
+     · Revenue total, margen bruto (precio_venta - costo_insumo) * cantidad
+
+  4. TOP PRODUCTOS
+     · Top 5 por cantidad vendida
+     · Top 5 por revenue (con gráfico de barras Chart.js)
+
+  5. ROTACIÓN DE MESAS
+     · Pedidos por mesa en el período
+     · Tiempo promedio de ocupación (apertura → cierre)
+
+  6. TIEMPO DE COCINA
+     · Tiempo promedio entre estado Pendiente y Listo (en minutos)
+     · Calculado desde FlujoEstado timestamps
+
+  7. ARQUEOS RECIENTES
+     · Lista de arqueos cerrados en el período
+     · Caja, usuario, monto sistema vs real, diferencia
+
+  8. RANKING DE MOZOS
+     · Total vendido por usuario
+     · Cantidad de tickets atendidos
+     · Nombre del empleado (si tiene perfil Empleado)
+
+NOTA: Todas las métricas filtran por estado_pago='Pagado' y el rango de fechas
+seleccionado. Sin selección, muestra el día actual.
+
+
+================================================================================
+10. MÓDULO: HISTORIAL (Pedidos Cerrados)
+================================================================================
+
+LISTA DE HISTORIAL
+URL: /pedidos/historial/
+Rol: Cajero, Administrador
+
+  Lista paginada (30 por página) de pedidos con estado Pagado o Anulado.
+
+  FILTROS DISPONIBLES:
+    · Fecha desde / hasta
+    · Mozo (usuario que tomó el pedido)
+    · Estado (Pagado / Anulado)
+
+  COLUMNAS: #Pedido, Mesa, Mozo, Cliente, Fecha Cierre, Total, Estado, Acciones
+
+  ACCIONES POR FILA:
+    · "Ver" → detalle del pedido
+    · "Anular" → modal de confirmación (solo pedidos Pagados)
+
+DETALLE DE PEDIDO
+URL: /pedidos/<id>/detalle-historial/
+
+  Muestra el pedido completo:
+  · Lista de ítems con precios históricos
+  · Totales (subtotal, descuento, IVA, total)
+  · Datos de la factura vinculada (nro_factura, timbrado, cliente)
+  · Botón "🖨️ Reimprimir Factura"
+  · Botón "✖ Anular Pedido" (si está Pagado)
+
+ANULAR PEDIDO
+URL: POST /pedidos/<id>/anular/
+
+  PROCESO:
+  1. Marca el DocumentoTributario como Anulado
+  2. Resta el monto del monto_cierre_sistema del arqueo (corrección contable)
+  3. Marca el vínculo PedidoDocumento como Corregido
+  4. Cambia estado_pago del pedido a Anulado
+  5. Libera la mesa (estado → Libre)
+
+  IMPORTANTE: La anulación no se puede deshacer.
+
+
+================================================================================
+11. MÓDULO: RESERVACIONES
+================================================================================
+
+LISTA DE RESERVACIONES
+URL: /reservaciones/
+Rol: Mozo, Cajero, Administrador
+
+  Muestra reservas confirmadas del día o de la próxima semana.
+  Toggle "Hoy" / "Semana" via parámetro GET ?vista=semana
+
+  COLUMNAS: Mesa, Sector, Cliente, Hora, Personas, Observaciones, Acciones
+  ACCIONES: "Activar Mesa" (va a abrir pedido) | "Cancelar"
+
+CREAR RESERVACIÓN
+URL: /reservaciones/crear/<mesa_id>/
+
+  Solo para mesas en estado Libre o Sucia.
+
+  CAMPOS:
+    · Fecha y hora de la reserva (datetime-local)
+    · Cantidad de personas
+    · Observaciones (libre)
+    · Cliente (búsqueda AJAX por nombre o RUC/CI; opcional)
+
+  VALIDACIÓN DE CONFLICTO:
+    El sistema verifica si la mesa ya tiene una reserva confirmada dentro
+    de una ventana de ±2 horas respecto al horario solicitado. Si existe
+    conflicto, muestra un mensaje de error y no crea la reserva.
+
+  AL CONFIRMAR:
+    · Crea el registro Reservacion con estado='Confirmada'
+    · Cambia estado de la mesa a 'Reservada'
+    · Redirige al salón
+
+CANCELAR RESERVACIÓN
+URL: POST /reservaciones/<id>/cancelar/
+
+  Cambia la reserva a estado='Cancelada'. Si no quedan otras reservas
+  activas para esa mesa, la libera (estado → Libre).
+
+ACTIVAR MESA RESERVADA
+URL: POST /reservaciones/<id>/activar-mesa/
+
+  Marca la reserva como Completada y redirige a /mesa/<id>/abrir/ para
+  crear el pedido. El mozo puede hacer esto directamente desde el salón.
+
+
+================================================================================
+12. MÓDULO: CLIENTES
+================================================================================
+
+LISTA DE CLIENTES
+URL: /clientes/
+Rol: Cajero, Administrador
+
+  Lista paginada (25 por página) de todos los clientes registrados.
+  Excluye el cliente genérico (RUC='0').
+
+  BÚSQUEDA: Por nombre/razón social o RUC/CI via GET ?q=
+
+  COLUMNAS: Nombre/Razón Social, RUC/CI, Teléfono, Dirección, Editar
+
+CREAR CLIENTE
+URL: /clientes/crear/
+
+  CAMPOS REQUERIDOS: Nombre/Razón Social, RUC/CI
+  CAMPOS OPCIONALES: Teléfono, Dirección
+  VALIDACIÓN: RUC/CI único (IntegrityError → mensaje "ya existe")
+
+EDITAR CLIENTE
+URL: /clientes/<id>/editar/
+
+  Mismos campos que crear. Los valores actuales se precargan en el formulario.
+
+BÚSQUEDA AJAX
+URL: GET /clientes/buscar/?q=<texto>
+
+  Usado en la comanda de cobro para buscar cliente en tiempo real.
+  Devuelve: {"clientes": [{"id": 1, "nombre": "...", "ruc_ci": "..."}]}
+  Mínimo 2 caracteres para disparar la búsqueda.
+
+CLIENTE OCASIONAL:
+  El cliente con RUC='0' ("Sin Nombre / Ocasional") es el predeterminado
+  cuando no se identifica al cliente. Se crea automáticamente si no existe.
+
+
+================================================================================
+13. MÓDULO: MENÚ (Productos y Categorías)
+================================================================================
+
+LISTA DE PRODUCTOS
+URL: /productos/
+Rol: Cajero, Administrador
+
+  Lista paginada (30 por página) con:
+  · Imagen del producto (miniatura 36x36)
+  · Nombre, categoría, precio de venta, costo de insumo
+  · Margen porcentual calculado: (venta - costo) / venta × 100
+  · Estado (Disponible / Agotado)
+  · Botón Editar
+
+  FILTROS: ?q= (nombre), ?categoria= (ID), ?disponible= (1=sí, 0=no)
+
+CREAR PRODUCTO
+URL: /productos/crear/
+
+  CAMPOS:
+    · Nombre (requerido)
+    · Categoría (select, requerido)
+    · Precio de venta en Gs. (entero, requerido)
+    · Costo de insumo en Gs. (entero, opcional; se usa para calcular margen)
+    · Imagen (opcional; se sube a /media/productos/)
+    · Disponible (checkbox; por defecto activo)
+
+EDITAR PRODUCTO
+URL: /productos/<id>/editar/
+
+  Mismo formulario. Si se sube nueva imagen, reemplaza la anterior.
+  Si no se sube imagen, se conserva la existente.
+
+TOGGLE DISPONIBILIDAD (AJAX)
+URL: POST /producto/<id>/toggle-disponible/
+Rol: Cajero, Administrador
+
+  Invierte el valor de disponible. Se puede usar desde:
+  · La comanda (botón junto a la tarjeta del producto)
+  · La lista de productos (aparece como badge de estado)
+
+CATEGORÍAS
+URL: /categorias/
+
+  Página única con tabla de categorías + formulario inline.
+  · Crear categoría: POST con accion='crear'
+  · Editar categoría: enlace ?editar=<id> carga el nombre en el formulario;
+    POST con accion='editar' y cat_id
+  · Muestra la cantidad de productos de cada categoría.
+
+
+================================================================================
+14. MÓDULO: CONFIGURACIÓN DEL RESTAURANTE
+================================================================================
+
+URL: /configuracion/
+Rol: Administrador (exclusivo)
+
+DESCRIPCIÓN:
+  Datos del restaurante que aparecen en las facturas y el sistema.
+  Implementado como singleton (siempre id=1; se crea al primer acceso).
+
+CAMPOS:
+  · Nombre del restaurante (aparece en cabecera de factura)
+  · RUC (aparece en factura)
+  · Dirección (aparece en factura)
+  · Teléfono (aparece en factura)
+  · Tasa de IVA: 10% o 5% (controla el cálculo de IVA incluido)
+
+Al guardar: redirige a la misma página con mensaje de confirmación.
+
+CÓMO SE USA EN FACTURA:
+  La vista imprimir_factura() carga ConfiguracionRestaurante.objects.get_or_create(id=1)
+  y pasa 'config' al template. Si aún no se configuró, usa defaults:
+  nombre='Ristorantino', tasa_iva=10.
+
+
+================================================================================
+15. ENDPOINTS AJAX
+================================================================================
+
+Todos los endpoints AJAX retornan JSON y requieren autenticación.
+Para POST se debe enviar el header X-CSRFToken con el token de la cookie.
+
+  MÉTODO  URL                                          ROL          RESPUESTA
+  ------  -------------------------------------------  -----------  -------------------------
+  POST    /mesa/<id>/marcar-sucia/                      Todos        {"ok":true,"estado":"Sucia"}
+  POST    /mesa/<id>/bloquear/                          Cajero/Admin {"ok":true,"estado":"..."}
+  GET/POST /pedido/<id>/agregar-ajax/<prod_id>/         Todos        {"total":"...","items":[...]}
+  POST    /pedido/<id>/cantidad/<detalle_id>/           Todos        {"total":"...","items":[...]}
+  POST    /pedido/<id>/eliminar-detalle/<detalle_id>/   Todos        {"total":"...","items":[...]}
+  POST    /producto/<id>/toggle-disponible/             Cajero/Admin {"ok":true,"disponible":bool}
+  GET     /clientes/buscar/?q=<texto>                  Todos        {"clientes":[{"id","nombre","ruc_ci"}]}
+
+Estructura de "items" en respuestas de comanda:
+  [{"id": 5, "cantidad": 2, "nombre": "Milanesa", "precio": "45000", "subtotal": "90000"}]
+
+ERRORES:
+  · 405 Method Not Allowed: si se hace GET a endpoints que solo aceptan POST
+  · 400 Bad Request: intentar editar cantidad de ítem que ya está en Cocina+
+  · 404 Not Found: recurso no existe o no pertenece al pedido indicado
+
+
+================================================================================
+16. MODELO DE DATOS
+================================================================================
+
+TABLAS Y RELACIONES PRINCIPALES:
+
+  roles              → Rol (nombre, activo)
+  empleados          → Empleado (usuario 1:1 User, rol FK, nombre, ci)
+  sectores           → Sector (nombre)
+  mesas              → Mesa (sector FK, numero, capacidad, estado)
+  categorias         → Categoria (nombre)
+  productos          → Producto (categoria FK, nombre, precio_venta,
+                                 costo_insumo, imagen, disponible)
+  clientes           → Cliente (nombre_razon_social, ruc_ci unique,
+                                telefono, direccion)
+  pedidos            → Pedido (mesa FK, mozo FK→User, cliente FK,
+                               fecha_apertura, fecha_cierre, estado_pago,
+                               total_pedido, metodo_pago, descuento)
+  pedido_detalle     → PedidoDetalle (pedido FK, producto FK, cantidad,
+                                      precio_historico ← snapshot en save)
+  flujo_estados      → FlujoEstado (pedido_detalle FK, estado, timestamp)
+                       Inmutable: solo se crean registros, no se modifican.
+  tipos_documentos   → TipoDocumento (nombre, activo)
+  timbrados          → Timbrado (tipo_doc FK, numero_timbrado,
+                                 fecha_vencimiento, serie, rango_desde, rango_hasta)
+  cajas              → Caja (nombre, activo)
+  caja_timbrado      → CajaTimbrado (caja FK, timbrado FK,
+                                     punto_expedicion, estado)
+  arqueos            → Arqueo (caja FK, usuario FK→User, fecha_apertura,
+                               fecha_cierre, monto_apertura,
+                               monto_cierre_sistema, monto_cierre_real,
+                               diferencia_arqueo, estado)
+  documentos_tributarios → DocumentoTributario (timbrado FK, arqueo FK,
+                                cliente FK, nro_factura, numero_secuencial,
+                                total_iva_10, monto_total, metodo_pago, estado)
+  pedido_documento   → PedidoDocumento (pedido FK, documento FK,
+                                        estado_vinculo)
+  reservaciones      → Reservacion (mesa FK, cliente FK, empleado FK→User,
+                                    fecha_reserva, cantidad_personas,
+                                    observaciones, estado)
+  config_restaurante → ConfiguracionRestaurante (nombre, ruc, direccion,
+                                                  telefono, tasa_iva)
+                        Singleton: siempre usar get_or_create(id=1)
+
+RELACIONES CLAVE:
+  · Un Pedido tiene muchos PedidoDetalle (1:N via 'detalles')
+  · Un PedidoDetalle tiene muchos FlujoEstado (audit trail inmutable)
+  · Un Pedido tiene un DocumentoTributario via PedidoDocumento (1:1 activo)
+  · Un Arqueo tiene muchos DocumentoTributario (1:N para el turno)
+  · Una Mesa puede tener muchas Reservacion (1:N via 'reservaciones')
+
+CAMPO ESPECIAL precio_historico:
+  PedidoDetalle captura el precio_venta del producto en el momento
+  del save(). Si el precio del producto cambia luego, los pedidos
+  anteriores conservan el precio original. Esto es un requisito
+  de auditoría fiscal.
+
+
+================================================================================
+17. CONFIGURACIÓN DEL ENTORNO
+================================================================================
+
+VARIABLES DE ENTORNO (opcionales; tienen fallback para desarrollo):
+  DJANGO_SECRET_KEY   — Clave secreta Django (recomendado en producción)
+  DB_PASSWORD         — Contraseña de PostgreSQL (fallback: 'admin')
+
+CONFIGURACIÓN POR DEFECTO (core/settings.py):
+  DEBUG = True
+  BASE DE DATOS:
+    ENGINE: django.db.backends.postgresql
+    NAME:   ristorantino
+    USER:   postgres
+    PASSWORD: admin (o $DB_PASSWORD)
+    HOST:   127.0.0.1
+    PORT:   5432
+  TIMEZONE: America/Asuncion
+  LANGUAGE: es-py
+  MEDIA_ROOT: BASE_DIR/media/  (imágenes de productos)
+  STATIC_ROOT: BASE_DIR/static/
+
+COMANDOS PARA LEVANTAR EL SISTEMA:
+
+  # Activar entorno virtual (Windows)
+  env\Scripts\activate
+
+  # Instalar dependencias
+  pip install -r requirements.txt
+
+  # Aplicar migraciones
+  python manage.py migrate
+
+  # Crear superusuario (primera vez)
+  python manage.py createsuperuser
+
+  # Iniciar servidor de desarrollo
+  python manage.py runserver
+
+  # Iniciar en puerto específico
+  python manage.py runserver 8001
+
+  # Acceder al sistema
+  http://localhost:8000/salon/
+
+CONFIGURACIÓN INICIAL (primera vez):
+  1. Crear superusuario → ir a /admin/
+  2. Crear Rol(es): Mozo, Cajero, Chef, Administrador
+  3. Crear Empleado(s) vinculados a usuarios Django
+  4. Crear Sector(es) y Mesa(s)
+  5. Crear Categoría(s) y Producto(s) del menú
+  6. Crear TipoDocumento → Timbrado → Caja → CajaTimbrado
+  7. Ir a /configuracion/ y guardar los datos del restaurante
+  8. Abrir la caja en /caja/ antes de cobrar
+
+MIGRACIONES DISPONIBLES:
+  0001_initial                  — Esquema base completo
+  0002_alter_mesa_sector        — Relación mesa-sector
+  0003_alter_arqueo_*           — Ajustes en arqueo
+  0004_alter_pedidodetalle_*    — Precio histórico nullable
+  0005_producto_imagen          — ImageField en productos
+  0006_reservacion_*            — Módulo de reservaciones
+  0007_add_fecha_cierre_index   — Índice para performance
+  0008_configrestaurante        — Tabla de configuración
+
+================================================================================
+  Fin del documento — Ristorantino v1.0
+================================================================================

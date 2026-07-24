@@ -1,0 +1,257 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Menú — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:1100px;">
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="fw-bold m-0">🍽️ Gestión de Menú</h2>
+        <div class="d-flex gap-2">
+            <a href="{% url 'lista_categorias' %}" class="btn btn-action btn-secondary-japandi px-3">
+                Categorías
+            </a>
+            <a href="{% url 'crear_producto' %}" class="btn btn-action btn-primary-japandi px-4">
+                + Nuevo Producto
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <form method="get" class="mb-4">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="q" value="{{ q }}" class="form-control rounded-3"
+                       placeholder="Buscar por nombre…">
+            </div>
+            <div class="col-md-3">
+                <select name="categoria" class="form-select rounded-3">
+                    <option value="">Todas las categorías</option>
+                    {% for cat in categorias %}
+                    <option value="{{ cat.id }}" {% if cat_id == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="disponible" class="form-select rounded-3">
+                    <option value="">Todos</option>
+                    <option value="1" {% if disp == '1' %}selected{% endif %}>Disponibles</option>
+                    <option value="0" {% if disp == '0' %}selected{% endif %}>Agotados</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-action btn-primary-japandi w-100 rounded-3">Filtrar</button>
+            </div>
+            <div class="col-md-1">
+                <a href="{% url 'lista_productos' %}" class="btn btn-outline-secondary w-100 rounded-3">✕</a>
+            </div>
+        </div>
+    </form>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="alert alert-{{ msg.tags }} alert-dismissible fade show rounded-3 mb-3" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if productos %}
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" style="font-size:0.875rem;">
+                    <thead style="background:#f8f6f4;">
+                        <tr>
+                            <th class="px-3 py-3" style="width:50px;"></th>
+                            <th>Producto</th>
+                            <th>Categoría</th>
+                            <th class="text-end pe-3">Precio Venta</th>
+                            <th class="text-end pe-3">Costo</th>
+                            <th class="text-end pe-3">Margen</th>
+                            <th class="text-center">Stock</th>
+                            <th class="text-center">Estado</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for p in productos %}
+                    <tr {% if not p.disponible %}style="opacity:0.6;"{% endif %}>
+                        <td class="px-3 text-center">
+                            {% if p.imagen %}
+                            <img src="{{ p.imagen.url }}" alt="{{ p.nombre }}"
+                                 style="width:36px; height:36px; object-fit:cover; border-radius:6px;">
+                            {% else %}
+                            <span style="font-size:1.2rem;">🍽️</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-bold">{{ p.nombre }}</td>
+                        <td class="text-muted small">{{ p.categoria.nombre }}</td>
+                        <td class="text-end pe-3 fw-bold price-gs" data-value="{{ p.precio_venta }}">Gs. {{ p.precio_venta }}</td>
+                        <td class="text-end pe-3 text-muted small price-gs" data-value="{{ p.costo_insumo }}">Gs. {{ p.costo_insumo }}</td>
+                        <td class="text-end pe-3 text-muted small">
+                            {% if p.precio_venta and p.costo_insumo %}
+                            {{ p.precio_venta|add:0 }}
+                            <span class="text-success small" id="margen-{{ p.id }}"></span>
+                            {% endif %}
+                        </td>
+                        {# ── Columna Stock ── #}
+                        <td class="text-center">
+                            {% if p.stock_actual is None %}
+                                <span class="text-muted small" title="Sin control de stock">∞</span>
+                            {% elif p.stock_actual == 0 %}
+                                <span class="badge bg-danger rounded-pill" style="font-size:.7rem;">0 — Agotado</span>
+                            {% elif p.stock_actual <= 5 %}
+                                <span class="badge rounded-pill fw-bold"
+                                      style="background:#fff3e0; color:#e65100; font-size:.7rem;">
+                                    ⚠️ {{ p.stock_actual }}
+                                </span>
+                            {% else %}
+                                <span class="badge rounded-pill bg-light text-dark border"
+                                      style="font-size:.7rem;">{{ p.stock_actual }}</span>
+                            {% endif %}
+                            <button class="btn btn-sm p-0 ms-1 text-muted"
+                                    style="font-size:.75rem; line-height:1;"
+                                    title="Reponer stock"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalStock"
+                                    data-pid="{{ p.id }}"
+                                    data-nombre="{{ p.nombre }}"
+                                    data-stock="{{ p.stock_actual|default:'' }}">
+                                📦
+                            </button>
+                        </td>
+                        <td class="text-center">
+                            {% if p.disponible %}
+                            <span class="badge rounded-pill" style="background:#e8f5e9; color:#2e7d32;">Disponible</span>
+                            {% else %}
+                            <span class="badge rounded-pill bg-secondary">Agotado</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'editar_producto' p.id %}"
+                               class="btn btn-sm btn-action btn-secondary-japandi py-1 px-3"
+                               style="font-size:0.75rem;">✏️ Editar</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Paginación -->
+    {% if page_obj.has_other_pages %}
+    <nav class="mt-4 d-flex justify-content-center">
+        <ul class="pagination pagination-sm gap-1">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link rounded-3" href="?{% if q %}q={{ q }}&{% endif %}{% if cat_id %}categoria={{ cat_id }}&{% endif %}{% if disp %}disponible={{ disp }}&{% endif %}page={{ page_obj.previous_page_number }}">‹ Anterior</a>
+            </li>
+            {% endif %}
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <li class="page-item active">
+                    <span class="page-link rounded-3" style="background:var(--japandi-accent); border-color:var(--japandi-accent);">{{ num }}</span>
+                </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <li class="page-item">
+                    <a class="page-link rounded-3" href="?page={{ num }}">{{ num }}</a>
+                </li>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link rounded-3" href="?{% if q %}q={{ q }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente ›</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    <p class="text-center text-muted small mt-1">
+        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        — {{ page_obj.paginator.count }} productos en total
+    </p>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-5 text-muted">
+        <p class="fs-3">🍽️</p>
+        <p>{% if q or cat_id %}No se encontraron productos con ese filtro.{% else %}No hay productos registrados aún.{% endif %}</p>
+        <a href="{% url 'crear_producto' %}" class="btn btn-action btn-primary-japandi px-4 mt-2">+ Agregar primer producto</a>
+    </div>
+    {% endif %}
+
+</div>
+
+{# ── Modal Reponer Stock ── #}
+<div class="modal fade" id="modalStock" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-body p-4">
+                <h6 class="fw-bold mb-1">📦 Actualizar Stock</h6>
+                <p class="text-muted small mb-3" id="modal-stock-nombre">—</p>
+                <form method="post" id="form-stock">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted text-uppercase">
+                            Nuevo stock (unidades)
+                        </label>
+                        <input type="number" name="stock_actual" id="modal-stock-input"
+                               class="form-control rounded-3 form-control-lg text-center"
+                               min="0" placeholder="Vacío = ilimitado">
+                        <div class="text-muted small mt-1">Dejá vacío para quitar el control de stock.</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-action btn-primary-japandi flex-grow-1">
+                            Guardar
+                        </button>
+                        <button type="button" class="btn btn-light rounded-pill flex-grow-1"
+                                data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function formatGs(v) {
+        return 'Gs. ' + new Intl.NumberFormat('es-PY').format(Math.round(parseFloat(v) || 0));
+    }
+    document.querySelectorAll('.price-gs').forEach(el => {
+        el.textContent = formatGs(el.dataset.value);
+    });
+    // Calcular margen inline
+    document.querySelectorAll('tr[style*="opacity"], tr:not([style*="opacity"])').forEach(row => {
+        const cells = row.querySelectorAll('.price-gs');
+        if (cells.length >= 2) {
+            const precio = parseFloat(cells[0]?.dataset?.value || 0);
+            const costo  = parseFloat(cells[1]?.dataset?.value || 0);
+            if (precio > 0) {
+                const pct = Math.round((precio - costo) / precio * 100);
+                const span = row.querySelector('[id^="margen-"]');
+                if (span) span.textContent = ` (${pct}%)`;
+            }
+        }
+    });
+
+    // ── Modal Reponer Stock ──────────────────────────────
+    const modalStock = document.getElementById('modalStock');
+    modalStock.addEventListener('show.bs.modal', function(e) {
+        const btn    = e.relatedTarget;
+        const pid    = btn.dataset.pid;
+        const nombre = btn.dataset.nombre;
+        const stock  = btn.dataset.stock;  // '' si es null (ilimitado)
+
+        document.getElementById('modal-stock-nombre').textContent = nombre;
+        document.getElementById('modal-stock-input').value = stock;
+        document.getElementById('form-stock').action = `/productos/${pid}/reponer-stock/`;
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}Error interno — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <div class="card border-0 shadow-sm rounded-4 p-5">
+                <div style="font-size:4rem; line-height:1;">🔥</div>
+                <h1 class="fw-bold mt-3" style="font-size:3rem; color:#c62828;">500</h1>
+                <h4 class="fw-bold">Error interno del servidor</h4>
+                <p class="text-muted mt-2">
+                    Ocurrió un error inesperado. El equipo técnico fue notificado.
+                </p>
+                <a href="{% url 'salon' %}" class="btn btn-action btn-primary-japandi px-5 mt-3">
+                    ← Volver al Salón
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

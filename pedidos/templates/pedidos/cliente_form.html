@@ -1,0 +1,129 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}{{ accion }} Cliente — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:520px;">
+
+    <a href="{% url 'lista_clientes' %}" class="text-decoration-none text-muted small mb-3 d-block">← Volver a clientes</a>
+
+    <h2 class="fw-bold mb-4">{{ accion }} Cliente</h2>
+
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show rounded-3 mb-4" role="alert">
+        {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label for="nombre_razon_social" class="form-label small text-muted fw-bold">
+                        Nombre / Razón Social <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" name="nombre_razon_social" id="nombre_razon_social"
+                           class="form-control rounded-3"
+                           value="{{ v_nombre }}"
+                           placeholder="Ej: Juan Pérez / Empresa S.A." required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="ruc_ci" class="form-label small text-muted fw-bold">
+                        RUC / CI <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" name="ruc_ci" id="ruc_ci"
+                           class="form-control rounded-3"
+                           value="{{ v_ruc }}"
+                           placeholder="Ej: 4567890-1" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="telefono" class="form-label small text-muted fw-bold">Teléfono</label>
+                    <input type="text" name="telefono" id="telefono"
+                           class="form-control rounded-3"
+                           value="{{ v_telefono }}"
+                           placeholder="Ej: 0981 123456">
+                </div>
+
+                <div class="mb-3">
+                    <label for="direccion" class="form-label small text-muted fw-bold">Dirección</label>
+                    <input type="text" name="direccion" id="direccion"
+                           class="form-control rounded-3"
+                           value="{{ v_direccion }}"
+                           placeholder="Ej: Av. Mariscal López 1234">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small text-muted fw-bold">Categoría</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for val, label in categorias %}
+                        <label class="metodo-btn">
+                            <input type="radio" name="categoria" value="{{ val }}"
+                                   {% if v_categoria == val %}checked{% endif %}>
+                            <span>{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div class="mt-2 text-muted small" id="descuento-preview"></div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-action btn-primary-japandi flex-fill py-2 fw-bold">
+                        {{ accion }} Cliente
+                    </button>
+                    <a href="{% url 'lista_clientes' %}" class="btn btn-action btn-secondary-japandi flex-fill py-2">
+                        Cancelar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.metodo-btn input[type="radio"] { display: none; }
+.metodo-btn span {
+    display: inline-block;
+    padding: 0.4rem 1rem;
+    border-radius: 50px;
+    border: 2px solid #e0ddd6;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+    color: var(--japandi-text);
+    background: white;
+}
+.metodo-btn input[type="radio"]:checked + span {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const DESCUENTOS = { 'Casual': 0, 'Habitual': 5, 'VIP': 10, 'Empleado': 15 };
+    function actualizarDescuentoPreview() {
+        const cat = document.querySelector('input[name="categoria"]:checked')?.value || 'Regular';
+        const pct = DESCUENTOS[cat] || 0;
+        const el = document.getElementById('descuento-preview');
+        el.textContent = pct > 0 ? `→ Descuento automático del ${pct}% al cobrar` : '';
+        el.style.color = pct > 0 ? '#4a7c59' : '';
+    }
+    document.querySelectorAll('input[name="categoria"]').forEach(r =>
+        r.addEventListener('change', actualizarDescuentoPreview)
+    );
+    actualizarDescuentoPreview();
+});
+</script>
+{% endblock %}

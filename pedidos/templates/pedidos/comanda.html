@@ -1,0 +1,496 @@
+{% extends 'pedidos/base.html' %}
+{% load static %}
+
+{% block title %}Comanda - Mesa {{ pedido.mesa.numero_mesa }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{% url 'salon' %}" class="text-decoration-none text-muted small mb-1 d-block">← Volver al Salón</a>
+            <h2 class="fw-bold m-0">Mesa {{ pedido.mesa.numero_mesa }} <span class="badge bg-light text-dark fs-6 ms-2">#{{ pedido.id }}</span></h2>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            {% if mesas_libres %}
+            <button class="btn btn-sm rounded-pill fw-bold"
+                    style="background:#f5f0eb; border:1.5px solid #c8bfb0; color:#3d3530; font-size:0.8rem;"
+                    data-bs-toggle="modal" data-bs-target="#modalTransferir">
+                ⇄ Transferir Mesa
+            </button>
+            {% endif %}
+            <div class="text-end">
+                <p class="m-0 text-muted small">Atendido por</p>
+                <p class="fw-bold m-0">{{ user.username }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="comanda-wrapper">
+        <!-- Columna Izquierda: Menú (Categorías + Productos) -->
+        <main class="comanda-column" style="background: transparent; box-shadow: none; padding: 0;">
+            <!-- Categorías Superiores -->
+            <div class="categories-container mb-4">
+                <button class="cat-btn active" onclick="filterCategory('all', event)">Todos</button>
+                {% for cat in categorias %}
+                <button class="cat-btn" onclick="filterCategory('cat-{{ cat.id }}', event)">{{ cat.nombre }}</button>
+                {% endfor %}
+            </div>
+
+            <!-- Búsqueda de productos -->
+            <div class="mb-3 position-relative">
+                <input type="text" id="search-productos" class="form-control rounded-pill ps-4 pe-5"
+                       placeholder="Buscar producto..."
+                       style="border: 1px solid var(--japandi-border); background: var(--japandi-surface); font-size: 0.9rem;"
+                       oninput="filtrarProductos()">
+                <button id="search-clear" onclick="limpiarBusqueda()"
+                        style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color: var(--japandi-muted); font-size:1rem; line-height:1;">✕</button>
+            </div>
+
+            <!-- Grid de Productos -->
+            <div id="no-resultados" class="text-center py-4 text-muted" style="display:none;">
+                <p class="mb-0 small">Sin resultados para la búsqueda.</p>
+            </div>
+            <div class="row g-3">
+                {% for prod in productos %}
+                <div class="col-md-6 col-lg-4 col-xl-3 product-item cat-{{ prod.categoria.id }}"
+                     data-producto-id="{{ prod.id }}">
+                    {% if prod.disponible %}
+                    <a href="javascript:void(0)" onclick="agregarProducto({{ prod.id }})" class="product-card-sm">
+                        {% if prod.imagen %}
+                        <div class="product-card-img mb-2">
+                            <img src="{{ prod.imagen.url }}" alt="{{ prod.nombre }}">
+                        </div>
+                        {% else %}
+                        <div class="product-card-img product-card-img--empty mb-2">
+                            <span>🍽️</span>
+                        </div>
+                        {% endif %}
+                        <div class="mb-1">
+                            <span class="badge bg-white text-muted shadow-sm rounded-pill">{{ prod.categoria.nombre }}</span>
+                        </div>
+                        <h6 class="fw-bold mb-1">{{ prod.nombre }}</h6>
+                        <p class="text-accent fw-bold m-0 price-gs" data-value="{{ prod.precio_venta }}">Gs. {{ prod.precio_venta }}</p>
+                        {# ── Badge de stock ── #}
+                        {% if prod.stock_actual is not None %}
+                        <div class="mt-1" id="stock-badge-{{ prod.id }}">
+                            {% if prod.stock_actual <= 5 %}
+                            <span class="badge rounded-pill" style="font-size:.65rem; background:#fff3e0; color:#e65100;">
+                                ⚠️ Últimas {{ prod.stock_actual }}
+                            </span>
+                            {% else %}
+                            <span class="badge rounded-pill bg-light text-muted border" style="font-size:.65rem;">
+                                {{ prod.stock_actual }} disp.
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="mt-1" id="stock-badge-{{ prod.id }}"></div>
+                        {% endif %}
+                        {% if puede_toggle %}
+                        <div class="mt-2" onclick="event.stopPropagation(); event.preventDefault();">
+                            <button class="btn btn-sm rounded-pill"
+                                    style="font-size:0.7rem; padding:2px 8px; background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7;"
+                                    onclick="toggleDisponible({{ prod.id }}, this)">
+                                ✓ Disponible
+                            </button>
+                        </div>
+                        {% endif %}
+                    </a>
+                    {% else %}
+                    <div class="product-card-sm product-card-agotado" style="opacity:0.45; cursor:default; pointer-events:none;">
+                        {% if prod.imagen %}
+                        <div class="product-card-img mb-2">
+                            <img src="{{ prod.imagen.url }}" alt="{{ prod.nombre }}" style="filter:grayscale(80%);">
+                        </div>
+                        {% else %}
+                        <div class="product-card-img product-card-img--empty mb-2">
+                            <span>🍽️</span>
+                        </div>
+                        {% endif %}
+                        <div class="mb-1">
+                            <span class="badge bg-secondary rounded-pill">Agotado</span>
+                        </div>
+                        <h6 class="fw-bold mb-1 text-muted">{{ prod.nombre }}</h6>
+                        <p class="text-muted fw-bold m-0 price-gs" data-value="{{ prod.precio_venta }}">Gs. {{ prod.precio_venta }}</p>
+                    </div>
+                    {% if puede_toggle %}
+                    <div class="mt-1 text-center" style="pointer-events:auto;">
+                        <button class="btn btn-sm rounded-pill"
+                                style="font-size:0.7rem; padding:2px 8px; background:#fce4ec; color:#c62828; border:1px solid #ef9a9a;"
+                                onclick="toggleDisponible({{ prod.id }}, this)">
+                            ✗ Agotado — Reactivar
+                        </button>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </main>
+
+        <!-- Columna Derecha: Resumen -->
+        <aside class="comanda-column">
+            <h6 class="text-uppercase fw-bold small text-muted mb-3">Resumen del Pedido</h6>
+            <div id="cart-items" class="flex-grow-1">
+                {% for item in detalles %}
+                <div class="cart-item" id="cart-item-{{ item.id }}">
+                    <div class="d-flex flex-column flex-grow-1">
+                        <div class="d-flex align-items-center gap-2">
+                            {% if item.estado_actual == 'Pendiente' or not item.estado_actual %}
+                            <input type="number" min="1" value="{{ item.cantidad }}"
+                                   class="form-control text-center fw-bold text-accent qty-input"
+                                   style="width:54px; padding:2px 4px; font-size:0.9rem;"
+                                   data-detalle-id="{{ item.id }}"
+                                   onchange="actualizarCantidad({{ item.id }}, this.value)">
+                            {% else %}
+                            <span class="fw-bold text-accent">{{ item.cantidad }}×</span>
+                            {% endif %}
+                            <span class="ms-1">{{ item.producto.nombre }}</span>
+                        </div>
+                        {% if item.estado_actual == 'Pendiente' or not item.estado_actual %}
+                        <div class="mt-1">
+                            <input type="text" maxlength="80" placeholder="Nota (ej: sin cebolla)…"
+                                   class="form-control form-control-sm rounded-pill nota-input"
+                                   style="font-size:0.75rem; color:#7a6f66;"
+                                   value="{{ item.observaciones|default:'' }}"
+                                   data-detalle-id="{{ item.id }}"
+                                   onchange="guardarNota({{ item.id }}, this.value)">
+                        </div>
+                        {% elif item.observaciones %}
+                        <div class="mt-1">
+                            <span class="text-muted" style="font-size:0.75rem; font-style:italic;">📝 {{ item.observaciones }}</span>
+                        </div>
+                        {% endif %}
+                        {% if item.estado_actual == 'Listo' %}
+                        <div class="mt-1">
+                            <span class="badge rounded-pill bg-success" style="font-size:0.7rem;">Listo</span>
+                            <a href="{% url 'cambiar_estado_cocina' item.id 'Entregado' %}"
+                               class="badge rounded-pill text-decoration-none ms-1"
+                               style="background: var(--japandi-accent); color:white; font-size:0.7rem;">
+                                ✓ Entregar
+                            </a>
+                        </div>
+                        {% elif item.estado_actual == 'Cocina' %}
+                        <span class="badge rounded-pill bg-warning text-dark mt-1" style="font-size:0.7rem;">En Cocina</span>
+                        {% elif item.estado_actual == 'Entregado' %}
+                        <span class="badge rounded-pill bg-secondary mt-1" style="font-size:0.7rem;">Entregado</span>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fw-bold text-muted small price-gs" data-value="{{ item.precio_historico }}">Gs. {{ item.precio_historico }}</span>
+                        {% if item.estado_actual != 'Cocina' and item.estado_actual != 'Listo' and item.estado_actual != 'Entregado' %}
+                        <button class="cart-item-remove" onclick="eliminarItem({{ item.id }})" title="Eliminar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center py-5 text-muted" id="cart-empty">
+                    <p>🍣</p>
+                    <p class="small">No hay productos seleccionados</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="cart-total-box">
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="h5 fw-bold">Total</span>
+                    <span id="total-monto" class="h5 fw-bold text-accent price-gs" data-value="{{ pedido.total_pedido }}">Gs. {{ pedido.total_pedido }}</span>
+                </div>
+                {% if user.is_superuser or user.empleado.rol.nombre == 'Cajero' or user.empleado.rol.nombre == 'Administrador' %}
+                <a href="{% url 'cobrar_pedido' pedido.id %}"
+                   class="btn btn-action w-100 mb-2 fw-bold"
+                   style="background: #4a7c59; color:white; border-radius:50px;">
+                    Ir a Cobrar
+                </a>
+                {% endif %}
+                <button class="btn btn-outline-secondary w-100 rounded-pill btn-sm" onclick="confirmarPedido()">
+                    Volver al Salón
+                </button>
+            </div>
+        </aside>
+    </div>
+</div>
+<!-- Modal Transferir Mesa -->
+{% if mesas_libres %}
+<div class="modal fade" id="modalTransferir" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:16px; border:1px solid #c8bfb0;">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Transferir Mesa {{ pedido.mesa.numero_mesa }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <p class="text-muted small mb-3">Seleccioná la mesa de destino. El pedido y todos sus ítems se moverán allí.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for mesa in mesas_libres %}
+                    <button class="btn fw-bold"
+                            style="min-width:72px; background:#f5f0eb; border:1.5px solid #c8bfb0; color:#3d3530; border-radius:12px;"
+                            onclick="confirmarTransferencia({{ mesa.id }}, {{ mesa.numero_mesa }})">
+                        Mesa {{ mesa.numero_mesa }}
+                        <br><small class="text-muted fw-normal" style="font-size:0.7rem;">Cap. {{ mesa.capacidad }}</small>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-sm rounded-pill px-4" style="background:#f5f0eb; border:1px solid #c8bfb0; color:#3d3530;"
+                        data-bs-dismiss="modal">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const PEDIDO_ID = "{{ pedido.id }}";
+    const CSRF = "{{ csrf_token }}";
+
+    let categoriaActiva = 'all';
+
+    function filterCategory(catId, event) {
+        categoriaActiva = catId;
+        document.querySelectorAll('.cat-btn').forEach(btn => btn.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        filtrarProductos();
+    }
+
+    function filtrarProductos() {
+        const query = document.getElementById('search-productos').value.trim().toLowerCase();
+        const clearBtn = document.getElementById('search-clear');
+        clearBtn.style.display = query ? 'block' : 'none';
+
+        const items = document.querySelectorAll('.product-item');
+        let visibles = 0;
+
+        items.forEach(item => {
+            const nombre = item.querySelector('h6') ? item.querySelector('h6').textContent.toLowerCase() : '';
+            const matchCat = categoriaActiva === 'all' || item.classList.contains(categoriaActiva);
+            const matchSearch = nombre.includes(query);
+            if (matchCat && matchSearch) {
+                item.style.display = 'block';
+                visibles++;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+
+        document.getElementById('no-resultados').style.display = visibles === 0 ? 'block' : 'none';
+    }
+
+    function limpiarBusqueda() {
+        document.getElementById('search-productos').value = '';
+        filtrarProductos();
+        document.getElementById('search-productos').focus();
+    }
+
+    function formatGs(valor) {
+        return 'Gs. ' + new Intl.NumberFormat('es-PY', { minimumFractionDigits: 0 }).format(Math.round(parseFloat(valor) || 0));
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.price-gs').forEach(el => {
+            el.textContent = formatGs(el.dataset.value);
+        });
+    });
+
+    /* ── Actualiza el badge de stock de una tarjeta de producto ── */
+    function actualizarStockBadge(stockInfo) {
+        if (!stockInfo) return;
+        const { producto_id, stock, disponible } = stockInfo;
+
+        // Si la disponibilidad cambió, recargar para reflejar la tarjeta correctamente
+        const col  = document.querySelector(`[data-producto-id="${producto_id}"]`);
+        const card = col ? col.querySelector('.product-card-sm, .product-card-agotado') : null;
+        const eraAgotado = card && card.classList.contains('product-card-agotado');
+
+        if (!disponible || (eraAgotado && disponible)) {
+            location.reload();
+            return;
+        }
+
+        // Solo actualizar el badge si el stock no cambió a indisponible
+        const badge = document.getElementById(`stock-badge-${producto_id}`);
+        if (!badge) return;
+        if (stock === null) {
+            badge.innerHTML = '';
+        } else if (stock <= 5 && stock > 0) {
+            badge.innerHTML = `<span class="badge rounded-pill" style="font-size:.65rem; background:#fff3e0; color:#e65100;">⚠️ Últimas ${stock}</span>`;
+        } else if (stock > 5) {
+            badge.innerHTML = `<span class="badge rounded-pill bg-light text-muted border" style="font-size:.65rem;">${stock} disp.</span>`;
+        }
+    }
+
+    function agregarProducto(productoId) {
+        const url = `/pedido/${PEDIDO_ID}/agregar-ajax/${productoId}/`;
+        fetch(url, { headers: { 'X-CSRFToken': CSRF } })
+            .then(response => {
+                if (!response.ok) throw new Error('Error en el servidor');
+                return response.json();
+            })
+            .then(data => {
+                updateSummary(data.items);
+                document.getElementById('total-monto').innerText = formatGs(data.total);
+                actualizarStockBadge(data.stock_info);
+            })
+            .catch(error => {
+                console.error('Error al agregar producto:', error);
+                alert('Hubo un error al procesar el pedido.');
+            });
+    }
+
+    function actualizarCantidad(detalleId, nuevaCantidad) {
+        const cantidad = Math.max(1, parseInt(nuevaCantidad) || 1);
+        const url = `/pedido/${PEDIDO_ID}/cantidad/${detalleId}/`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': CSRF
+            },
+            body: `cantidad=${cantidad}`
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                updateSummary(data.items);
+                document.getElementById('total-monto').innerText = formatGs(data.total);
+                actualizarStockBadge(data.stock_info);
+            })
+            .catch(err => {
+                console.error('Error al actualizar cantidad:', err);
+            });
+    }
+
+    function toggleDisponible(productoId, btn) {
+        const url = `/producto/${productoId}/toggle-disponible/`;
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF }
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    // Reload to refresh product grid state
+                    location.reload();
+                }
+            })
+            .catch(err => console.error('Error al cambiar disponibilidad:', err));
+    }
+
+    function updateSummary(items) {
+        const container = document.getElementById('cart-items');
+        container.innerHTML = '';
+
+        if (items.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-5 text-muted" id="cart-empty">
+                    <p>🍣</p>
+                    <p class="small">No hay productos seleccionados</p>
+                </div>`;
+            return;
+        }
+
+        items.forEach(item => {
+            container.innerHTML += `
+                <div class="cart-item" id="cart-item-${item.id}">
+                    <div class="d-flex flex-column flex-grow-1">
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="number" min="1" value="${item.cantidad}"
+                                   class="form-control text-center fw-bold text-accent qty-input"
+                                   style="width:54px; padding:2px 4px; font-size:0.9rem;"
+                                   data-detalle-id="${item.id}"
+                                   onchange="actualizarCantidad(${item.id}, this.value)">
+                            <span class="ms-1">${item.nombre}</span>
+                        </div>
+                        <div class="mt-1">
+                            <input type="text" maxlength="80" placeholder="Nota (ej: sin cebolla)…"
+                                   class="form-control form-control-sm rounded-pill nota-input"
+                                   style="font-size:0.75rem; color:#7a6f66;"
+                                   value="${esc(item.nota || '')}"
+                                   data-detalle-id="${item.id}"
+                                   onchange="guardarNota(${item.id}, this.value)">
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fw-bold text-muted small">${formatGs(item.precio)}</span>
+                        <button class="cart-item-remove" onclick="eliminarItem(${item.id})" title="Eliminar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>`;
+        });
+    }
+
+    function confirmarPedido() {
+        const tieneItems = document.querySelectorAll('#cart-items .cart-item').length > 0;
+        if (!tieneItems) {
+            alert('El pedido está vacío. Agregá al menos un producto antes de confirmar.');
+            return;
+        }
+        window.location.href = "{% url 'confirmar_pedido' pedido.id %}";
+    }
+
+    function esc(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function guardarNota(detalleId, nota) {
+        fetch(`/detalle/${detalleId}/nota/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': CSRF
+            },
+            body: `nota=${encodeURIComponent(nota)}`
+        });
+    }
+
+    function confirmarTransferencia(mesaId, mesaNumero) {
+        if (!confirm(`¿Transferir el pedido a la Mesa ${mesaNumero}?`)) return;
+        fetch(`/pedido/${PEDIDO_ID}/transferir/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': CSRF
+            },
+            body: `mesa_id=${mesaId}`
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                window.location.href = '/salon/';
+            } else {
+                alert(data.error || 'Error al transferir');
+            }
+        })
+        .catch(() => alert('Error al conectar con el servidor'));
+    }
+
+    function eliminarItem(detalleId) {
+        const url = `/pedido/${PEDIDO_ID}/eliminar-detalle/${detalleId}/`;
+        fetch(url, { headers: { 'X-CSRFToken': CSRF } })
+            .then(response => {
+                if (!response.ok) throw new Error('Error en el servidor');
+                return response.json();
+            })
+            .then(data => {
+                updateSummary(data.items);
+                document.getElementById('total-monto').innerText = formatGs(data.total);
+                actualizarStockBadge(data.stock_info);
+            })
+            .catch(error => {
+                console.error('Error al eliminar item:', error);
+                alert('Hubo un error al eliminar el producto.');
+            });
+    }
+</script>
+{% endblock %}

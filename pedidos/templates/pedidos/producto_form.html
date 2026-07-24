@@ -1,0 +1,108 @@
+{% extends 'pedidos/base.html' %}
+
+{% block title %}{{ accion }} Producto — Ristorantino{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:620px;">
+
+    <div class="mb-4">
+        <a href="{% url 'lista_productos' %}" class="text-decoration-none text-muted small mb-1 d-block">← Volver al Menú</a>
+        <h2 class="fw-bold m-0">{{ accion }} Producto</h2>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger rounded-3 mb-3">{{ error }}</div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Nombre del Producto *</label>
+                    <input type="text" name="nombre" value="{{ v_nombre }}" class="form-control rounded-3"
+                           placeholder="Ej. Milanesa napolitana" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Categoría *</label>
+                    <select name="categoria" class="form-select rounded-3" required>
+                        <option value="">— Seleccionar —</option>
+                        {% for cat in categorias %}
+                        <option value="{{ cat.id }}" {% if v_cat == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-bold small text-muted text-uppercase">Precio de Venta (Gs.) *</label>
+                        <input type="number" name="precio_venta" value="{{ v_precio }}" class="form-control rounded-3"
+                               placeholder="0" min="0" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold small text-muted text-uppercase">Costo de Insumo (Gs.)</label>
+                        <input type="number" name="costo_insumo" value="{{ v_costo }}" class="form-control rounded-3"
+                               placeholder="0" min="0">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Imagen (opcional)</label>
+                    {% if producto.imagen %}
+                    <div class="mb-2">
+                        <img src="{{ producto.imagen.url }}" alt="{{ producto.nombre }}"
+                             style="width:80px; height:80px; object-fit:cover; border-radius:8px;">
+                        <span class="text-muted small ms-2">Imagen actual. Subí una nueva para reemplazarla.</span>
+                    </div>
+                    {% endif %}
+                    <input type="file" name="imagen" class="form-control rounded-3" accept="image/*">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">
+                        Stock Inicial (unidades)
+                    </label>
+                    <input type="number" name="stock_actual" value="{{ v_stock }}"
+                           class="form-control rounded-3" placeholder="Vacío = ilimitado" min="0">
+                    <div class="text-muted small mt-1">
+                        Dejá vacío para no controlar stock. Si ponés 0, el producto se marcará como agotado.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted text-uppercase">Tasa de IVA</label>
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% for val, label in tasas_iva %}
+                        <label class="metodo-btn">
+                            <input type="radio" name="tasa_iva" value="{{ val }}"
+                                   {% if v_tasa_iva == val %}checked{% endif %}>
+                            <span>{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="disponible" value="1" id="disponible"
+                               {% if v_disponible %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="disponible">Disponible en el menú</label>
+                    </div>
+                    <div class="text-muted small mt-1">Si está desactivado, el producto no aparecerá disponible en la comanda.</div>
+                </div>
+
+                <div class="d-flex gap-3">
+                    <button type="submit" class="btn btn-action btn-primary-japandi px-5 py-2 fw-bold flex-grow-1">
+                        {{ accion }} Producto
+                    </button>
+                    <a href="{% url 'lista_productos' %}" class="btn btn-outline-secondary px-4 py-2 rounded-pill">
+                        Cancelar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
