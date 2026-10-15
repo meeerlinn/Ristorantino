@@ -75,7 +75,15 @@
 
                         {# ── LIBRE o SUCIA ── #}
                         {% if mesa.estado == 'Libre' or mesa.estado == 'Sucia' %}
-                            <a href="{% url 'abrir_mesa' mesa.id %}" class="btn btn-action btn-primary-japandi">
+                            {% if mesa.estado == 'Sucia' %}
+                            <button class="btn btn-action btn-primary-japandi"
+                                    onclick="marcarLibre({{ mesa.id }})"
+                                    data-bs-dismiss="modal">
+                                <span>✅</span> Marcar como Disponible
+                            </button>
+                            {% endif %}
+                            <a href="{% url 'abrir_mesa' mesa.id %}"
+                               class="btn btn-action {% if mesa.estado == 'Sucia' %}btn-secondary-japandi{% else %}btn-primary-japandi{% endif %}">
                                 <span>✨</span> Abrir Nuevo Pedido
                             </a>
                             {% if mesa.estado == 'Libre' %}
@@ -89,13 +97,14 @@
                             <a href="{% url 'abrir_mesa' mesa.id %}" class="btn btn-action btn-primary-japandi">
                                 <span>📝</span> Gestionar Pedido
                             </a>
-                            {% if mesa.pedido_activo_id %}
+                            {# Cobrar es solo para Cajero/Administrador (mismo criterio que "Ir a Cobrar" en la comanda) #}
+                            {% if mesa.pedido_activo_id %}{% if user.is_superuser or user.empleado.rol.nombre == 'Cajero' or user.empleado.rol.nombre == 'Administrador' %}
                             <a href="{% url 'cobrar_pedido' mesa.pedido_activo_id %}"
                                class="btn btn-action btn-secondary-japandi"
                                style="background-color: #e8f5e9; color: #2e7d32; border-color: #c8e6c9;">
                                 <span>💳</span> Cerrar Mesa / Facturar
                             </a>
-                            {% endif %}
+                            {% endif %}{% endif %}
 
                         {# ── RESERVADA ── #}
                         {% elif mesa.estado == 'Reservada' %}
@@ -131,7 +140,9 @@
                         <hr class="my-2 opacity-10">
 
                         <div class="row g-2">
-                            <div class="col-6">
+                            {# Solo una mesa Libre se puede marcar sucia (una Ocupada queda sucia al cobrarse) #}
+                            {% if mesa.estado == 'Libre' %}
+                            <div class="col">
                                 <button class="btn btn-action btn-secondary-japandi w-100 py-2 small"
                                         style="font-size: 0.8rem;"
                                         onclick="marcarSucia({{ mesa.id }}, this)"
@@ -139,7 +150,8 @@
                                     🧹 Marcar Sucia
                                 </button>
                             </div>
-                            <div class="col-6">
+                            {% endif %}
+                            <div class="col">
                                 {% if user.is_superuser or user.empleado.rol.nombre == 'Cajero' or user.empleado.rol.nombre == 'Administrador' %}
                                 <button class="btn btn-action btn-secondary-japandi w-100 py-2 small"
                                         style="font-size: 0.8rem; color: #dc3545;"
@@ -178,8 +190,24 @@
             headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' }
         })
         .then(r => r.json())
-        .then(() => location.reload())
+        .then(data => {
+            if (data.error) alert(data.error);
+            location.reload();
+        })
         .catch(() => alert('Error al marcar la mesa. Intentá de nuevo.'));
+    }
+
+    function marcarLibre(mesaId) {
+        fetch(`/mesa/${mesaId}/marcar-libre/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) alert(data.error);
+            location.reload();
+        })
+        .catch(() => alert('Error al marcar la mesa como disponible. Intentá de nuevo.'));
     }
 
     function bloquearMesa(mesaId, btn) {

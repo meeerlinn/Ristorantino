@@ -3,11 +3,19 @@
 
 {% block title %}Comanda - Mesa {{ pedido.mesa.numero_mesa }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* La comanda ocupa justo la pantalla (ver ajustarAltoComanda): sin el margen
+       inferior general, la página no se desplaza unos píxeles de más */
+    body { margin-bottom: 0; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid px-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <a href="{% url 'salon' %}" class="text-decoration-none text-muted small mb-1 d-block">← Volver al Salón</a>
+            <a href="{% url 'confirmar_pedido' pedido.id %}" class="text-decoration-none text-muted small mb-1 d-block">← Volver al Salón</a>
             <h2 class="fw-bold m-0">Mesa {{ pedido.mesa.numero_mesa }} <span class="badge bg-light text-dark fs-6 ms-2">#{{ pedido.id }}</span></h2>
         </div>
         <div class="d-flex align-items-center gap-3">
@@ -199,8 +207,9 @@
                     <span id="total-monto" class="h5 fw-bold text-accent price-gs" data-value="{{ pedido.total_pedido }}">Gs. {{ pedido.total_pedido }}</span>
                 </div>
                 {% if user.is_superuser or user.empleado.rol.nombre == 'Cajero' or user.empleado.rol.nombre == 'Administrador' %}
-                <a href="{% url 'cobrar_pedido' pedido.id %}"
-                   class="btn btn-action w-100 mb-2 fw-bold"
+                {# Oculto mientras el pedido está vacío; updateSummary() lo muestra al cargar productos #}
+                <a href="{% url 'cobrar_pedido' pedido.id %}" id="btn-cobrar"
+                   class="btn btn-action w-100 mb-2 fw-bold{% if not detalles %} d-none{% endif %}"
                    style="background: #4a7c59; color:white; border-radius:50px;">
                     Ir a Cobrar
                 </a>
@@ -248,6 +257,32 @@
 <script>
     const PEDIDO_ID = "{{ pedido.id }}";
     const CSRF = "{{ csrf_token }}";
+
+    /* ── Alto de la comanda ──
+       Ocupa la pantalla que queda bajo el encabezado real: el menú superior ocupa
+       1 a 3 renglones según el ancho y el rol, y arriba puede haber mensajes.
+       Se recalcula al girar la tablet o cambiar el tamaño, y cuando cambia el alto
+       de lo que está encima (cerrar un mensaje, fuentes que terminan de cargar).
+       (El evento 'closed.bs.alert' no sirve: Bootstrap lo emite con el mensaje ya
+       quitado de la página y no llega al document.) */
+    function ajustarAltoComanda() {
+        const wrapper = document.querySelector('.comanda-wrapper');
+        const top = wrapper.getBoundingClientRect().top + window.scrollY;
+        const alto = Math.max(420, window.innerHeight - top - 16);
+        wrapper.style.setProperty('--comanda-alto', alto + 'px');
+    }
+    ajustarAltoComanda();
+    window.addEventListener('resize', ajustarAltoComanda);
+    window.addEventListener('load', ajustarAltoComanda);
+    if ('ResizeObserver' in window) {
+        const observador = new ResizeObserver(ajustarAltoComanda);
+        // Menú superior y bloque de mensajes: todo lo que está antes del contenido
+        let encima = document.querySelector('.comanda-wrapper').closest('.container-fluid').previousElementSibling;
+        while (encima) {
+            observador.observe(encima);
+            encima = encima.previousElementSibling;
+        }
+    }
 
     let categoriaActiva = 'all';
 
@@ -388,6 +423,10 @@
         const container = document.getElementById('cart-items');
         container.innerHTML = '';
 
+        // "Ir a Cobrar" solo con productos (el servidor también rechaza cobrar un pedido vacío)
+        const btnCobrar = document.getElementById('btn-cobrar');
+        if (btnCobrar) btnCobrar.classList.toggle('d-none', items.length === 0);
+
         if (items.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-5 text-muted" id="cart-empty">
@@ -431,11 +470,8 @@
     }
 
     function confirmarPedido() {
-        const tieneItems = document.querySelectorAll('#cart-items .cart-item').length > 0;
-        if (!tieneItems) {
-            alert('El pedido está vacío. Agregá al menos un producto antes de confirmar.');
-            return;
-        }
+        // Con el pedido vacío también se puede salir: confirmar_pedido lo descarta
+        // y la mesa queda como estaba (se ocupa recién con el primer producto)
         window.location.href = "{% url 'confirmar_pedido' pedido.id %}";
     }
 

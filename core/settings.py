@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.contrib.messages import constants as message_constants
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -131,5 +132,10 @@ STATICFILES_DIRS = [
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-LOGIN_REDIRECT_URL = '/salon' # Te lleva al salón después del login
+# Los templates arman la clase como alert-{{ msg.tags }}: Django etiqueta los
+# errores como "error", pero en Bootstrap la clase es "alert-danger" (sin esto,
+# los mensajes de error se veían sin color, como texto suelto)
+MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
+
+LOGIN_REDIRECT_URL = 'inicio' # Después del login: Chef → cocina, resto → salón
 LOGOUT_REDIRECT_URL = '/accounts/login/' # Te lleva al login después de salir

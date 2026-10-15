@@ -2,6 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Entrada: redirige según el rol (Chef → cocina, resto → salón)
+    path('', views.inicio, name='inicio'),
+
     # Salón y mesas
     path('salon/', views.salon_principal, name='salon'),
     path('mesa/<int:mesa_id>/abrir/', views.abrir_mesa, name='abrir_mesa'),
@@ -32,6 +35,7 @@ urlpatterns = [
 
     # Acciones de Mesa (AJAX)
     path('mesa/<int:mesa_id>/marcar-sucia/', views.marcar_sucia,   name='marcar_sucia'),
+    path('mesa/<int:mesa_id>/marcar-libre/', views.marcar_libre,   name='marcar_libre'),
     path('mesa/<int:mesa_id>/bloquear/',     views.bloquear_mesa,  name='bloquear_mesa'),
 
     # Dashboard / KPIs

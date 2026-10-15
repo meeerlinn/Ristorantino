@@ -21,8 +21,10 @@ def requiere_rol(*roles):
     Jerarquía de acceso:
         Superusuario Django (is_superuser=True) → acceso total, sin chequeo de rol.
         Rol correcto → accede a la vista normalmente.
-        Rol incorrecto o sin empleado asociado → redirect('salon') con messages.error
-            mostrando los roles requeridos en el mensaje.
+        Rol incorrecto o sin empleado asociado → redirect('inicio') con messages.error
+            mostrando los roles requeridos en el mensaje. 'inicio' envía a cada rol a su
+            pantalla permitida (Chef → cocina, resto → salón), así un rechazo nunca rebota
+            contra una vista que el mismo usuario tampoco puede ver.
 
     El rol se obtiene desde request.user.empleado.rol.nombre. Si el usuario no tiene
     un Empleado asociado (AttributeError), se trata como sin rol y se deniega el acceso.
@@ -48,6 +50,6 @@ def requiere_rol(*roles):
                 request,
                 f'No tenés permiso para acceder a esa sección (requiere: {", ".join(roles)}).'
             )
-            return redirect('salon')
+            return redirect('inicio')
         return wrapper
     return decorator

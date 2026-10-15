@@ -7,6 +7,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponse
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -23,12 +24,59 @@ from .models import (
 )
 from .decorators import requiere_rol
 
+
+def sincronizar_estado_mesa(pedido):
+    """
+    Ajusta el estado de la mesa según los ítems de su pedido pendiente.
+
+    Con ítems → Ocupada: es el primer producto cargado lo que ocupa la mesa, no
+    entrar a la comanda (abrir una mesa y salir sin cargar nada no la cambia).
+    Sin ítems → Libre, solo si estaba Ocupada (al quitar el último producto);
+    un estado Sucia o Reservada se respeta.
+    """
+    mesa = pedido.mesa
+    tiene_items = pedido.detalles.exists()
+    if tiene_items and mesa.estado != 'Ocupada':
+        mesa.estado = 'Ocupada'
+        mesa.save()
+    elif not tiene_items and mesa.estado == 'Ocupada':
+        mesa.estado = 'Libre'
+        mesa.save()
+
+
 @login_required
+def inicio(request):
+    """
+    Pantalla de entrada según el rol del usuario (destino del login y de la raíz '/').
+
+    Roles: todos los autenticados
+    Método: GET
+    Retorna: redirect al monitor de cocina para el rol Chef; al salón para Mozo,
+             Cajero, Administrador y superusuarios. Un usuario sin rol reconocido no
+             tiene ninguna pantalla permitida: se cierra su sesión y vuelve al login.
+    """
+    if request.user.is_superuser:
+        return redirect('salon')
+    try:
+        rol = request.user.empleado.rol.nombre
+    except AttributeError:
+        rol = None
+    if rol == 'Chef':
+        return redirect('vista_cocina')
+    if rol in ('Mozo', 'Cajero', 'Administrador'):
+        return redirect('salon')
+    logout(request)
+    messages.error(request, 'Tu usuario no tiene un rol asignado. Consultá con el administrador.')
+    return redirect('login')
+
+
+@login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def salon_principal(request):
     """
     Pantalla principal del restaurante: grilla de mesas por sector.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET
     Retorna: render salon.html — incluye estado actual de cada mesa,
              pedido_activo_id (si hay pedido Pendiente) y reservacion_activa.
@@ -57,57 +105,71 @@ def salon_principal(request):
     return render(request, 'pedidos/salon.html', context)
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def abrir_mesa(request, mesa_id):
     """
     Abre una mesa y crea el Pedido inicial.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET (redirect)
-    - Si la mesa ya está Ocupada: redirige al pedido activo existente.
-    - Si está Libre o Sucia: cambia estado a Ocupada, crea Pedido con cliente
-      genérico (RUC='0') y redirige a tomar_pedido.
-    - Cualquier otro estado: redirige al salón sin acción.
+    La mesa NO cambia de estado al abrirla: pasa a Ocupada recién con el primer
+    producto (ver sincronizar_estado_mesa). Salir sin cargar nada la deja igual.
+    - Si la mesa tiene un pedido Pendiente con ítems: la deja Ocupada y redirige
+      a ese pedido, sin crear otro.
+    - Si tiene un pedido Pendiente vacío (alguien entró y salió sin cargar nada):
+      lo reutiliza, actualizando mozo y fecha_apertura, en lugar de crear otro.
+      Así una mesa nunca acumula pedidos duplicados o huérfanos.
+    - Si no tiene: crea Pedido con cliente genérico (RUC='0') y redirige a
+      tomar_pedido. Vale para cualquier estado de mesa, incluida Reservada: es
+      el destino de "Activar Mesa" (reserva que llega) y de "Abrir Pedido" en
+      una mesa bloqueada sin reserva.
     """
     mesa = get_object_or_404(Mesa, id=mesa_id)
-    
-    # Si la mesa ya está ocupada, buscamos el pedido pendiente para redirigir directamente
-    if mesa.estado == 'Ocupada':
-        pedido_activo = Pedido.objects.filter(mesa=mesa, estado_pago='Pendiente').first()
-        if pedido_activo:
-            return redirect('tomar_pedido', pedido_id=pedido_activo.id)
 
-    # Solo permitimos abrir la mesa si está Libre o Sucia
-    if mesa.estado == 'Libre' or mesa.estado == 'Sucia':
-        # 1. Actualizamos el estado de la mesa
-        mesa.estado = 'Ocupada'
-        mesa.save()
+    # Si la mesa ya tiene un pedido pendiente, se retoma en lugar de crear otro
+    pedido_activo = (
+        Pedido.objects.filter(mesa=mesa, estado_pago='Pendiente')
+        .annotate(n_items=Count('detalles'))
+        .order_by('-n_items', '-id')
+        .first()
+    )
+    if pedido_activo and pedido_activo.n_items:
+        if mesa.estado != 'Ocupada':
+            mesa.estado = 'Ocupada'
+            mesa.save()
+        return redirect('tomar_pedido', pedido_id=pedido_activo.id)
+    if pedido_activo:
+        # Vacío: en la práctica es un pedido nuevo, que arranca ahora con este mozo
+        pedido_activo.mozo = request.user
+        pedido_activo.fecha_apertura = timezone.now()
+        pedido_activo.save()
+        return redirect('tomar_pedido', pedido_id=pedido_activo.id)
 
-        # 2. Obtenemos un cliente por defecto (asegúrate de que exista en la DB)
-        # O podrías hacer que el campo cliente sea nullable en models.py
-        cliente_generico, _ = Cliente.objects.get_or_create(
-            ruc_ci="0", 
-            defaults={'nombre_razon_social': "Sin Nombre / Ocasional"}
-        )
-        
-        # 3. Creamos el pedido inicial
-        nuevo_pedido = Pedido.objects.create(
-            mesa=mesa,
-            mozo=request.user,
-            cliente=cliente_generico,
-            estado_pago='Pendiente'
-        )
-        
-        # Redireccionamos directamente a la toma de pedido
-        return redirect('tomar_pedido', pedido_id=nuevo_pedido.id)
-    
-    return redirect('salon')
+    # 1. Obtenemos un cliente por defecto (asegúrate de que exista en la DB)
+    # O podrías hacer que el campo cliente sea nullable en models.py
+    cliente_generico, _ = Cliente.objects.get_or_create(
+        ruc_ci="0",
+        defaults={'nombre_razon_social': "Sin Nombre / Ocasional"}
+    )
+
+    # 2. Creamos el pedido inicial (la mesa se ocupa con el primer producto)
+    nuevo_pedido = Pedido.objects.create(
+        mesa=mesa,
+        mozo=request.user,
+        cliente=cliente_generico,
+        estado_pago='Pendiente'
+    )
+
+    # Redireccionamos directamente a la toma de pedido
+    return redirect('tomar_pedido', pedido_id=nuevo_pedido.id)
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def detalle_pedido(request, pedido_id):
     """
     Vista de resumen administrativo de un pedido (no es la comanda principal).
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET
     Retorna: render detalle_pedido.html
     Nota: la pantalla de toma de pedidos real es tomar_pedido().
@@ -126,11 +188,12 @@ def detalle_pedido(request, pedido_id):
     return render(request, 'pedidos/detalle_pedido.html', context)
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def tomar_pedido(request, pedido_id):
     """
     Pantalla principal de toma de pedido (comanda digital).
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET
     Retorna: render comanda.html con catálogo completo de productos, detalles
              del pedido anotados con su estado_actual de cocina, y flag
@@ -168,11 +231,12 @@ def tomar_pedido(request, pedido_id):
     return render(request, 'pedidos/comanda.html', context)
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def agregar_producto(request, pedido_id, producto_id):
     """
     Agrega un producto al pedido (versión sin AJAX, redirect).
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET (redirect)
     Retorna: redirect a tomar_pedido
     Nota: la versión AJAX (agregar_producto_ajax) es la usada en la comanda.
@@ -193,15 +257,17 @@ def agregar_producto(request, pedido_id, producto_id):
 
     # Actualizamos el total del pedido de forma simple
     pedido.actualizar_total()
+    sincronizar_estado_mesa(pedido)
 
     return redirect('tomar_pedido', pedido_id=pedido.id)
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def agregar_producto_ajax(request, pedido_id, producto_id):
     """
     Agrega un producto al carrito vía AJAX (o incrementa su cantidad si ya existe).
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET o POST (fetch desde comanda.html)
     Retorna: JsonResponse {"total": "...", "items": [...]}
     Al crear un nuevo detalle: crea FlujoEstado='Pendiente' y captura precio_historico.
@@ -226,6 +292,7 @@ def agregar_producto_ajax(request, pedido_id, producto_id):
 
     # Usamos el método centralizado en el modelo
     pedido.actualizar_total()
+    sincronizar_estado_mesa(pedido)
 
     # ── Gestión de stock ──────────────────────────────────
     stock_info = None
@@ -255,11 +322,12 @@ def agregar_producto_ajax(request, pedido_id, producto_id):
     })
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def eliminar_detalle_ajax(request, pedido_id, detalle_id):
     """
     Elimina un ítem del pedido vía AJAX.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET o POST (fetch desde comanda.html)
     Retorna: JsonResponse {"total": "...", "items": [...]}
     Precaución: no verifica el estado del ítem; se confía en el template
@@ -273,6 +341,7 @@ def eliminar_detalle_ajax(request, pedido_id, detalle_id):
     cantidad  = detalle.cantidad
     detalle.delete()
     pedido.actualizar_total()
+    sincronizar_estado_mesa(pedido)
 
     # ── Restaurar stock ───────────────────────────────────
     stock_info = None
@@ -301,29 +370,60 @@ def eliminar_detalle_ajax(request, pedido_id, detalle_id):
         'stock_info': stock_info,
     })
 
+# Estados que cada rol puede asignar desde cambiar_estado_cocina:
+# la cocina prepara (Cocina, Listo) y el salón entrega (Entregado).
+ESTADOS_POR_ROL = {
+    'Chef':          ('Cocina', 'Listo'),
+    'Mozo':          ('Entregado',),
+    'Cajero':        ('Entregado',),
+    'Administrador': ('Cocina', 'Listo', 'Entregado'),
+}
+
 @login_required
 def cambiar_estado_cocina(request, detalle_id, nuevo_estado):
     """
     Avanza el estado de preparación de un ítem de cocina.
 
-    Roles: todos los autenticados (chef usa esta URL desde el monitor)
+    Roles: según el estado destino (ver ESTADOS_POR_ROL) — Chef: Cocina y Listo
+           (desde el monitor); Mozo y Cajero: Entregado (desde la comanda);
+           Administrador y superusuario: todos.
     Método: GET (link directo en cocina.html y comanda.html)
-    Retorna: redirect a vista_cocina
+    Retorna: redirect a tomar_pedido si el ítem se marcó Entregado (vuelve a la
+             comanda); a vista_cocina en los demás casos.
     Crea un FlujoEstado inmutable con el nuevo estado y timestamp actual.
+    Un estado no permitido para el rol (o inexistente) no se registra.
     """
     detalle = get_object_or_404(PedidoDetalle, id=detalle_id)
+
+    if request.user.is_superuser:
+        permitidos = ESTADOS_POR_ROL['Administrador']
+    else:
+        try:
+            rol = request.user.empleado.rol.nombre
+        except AttributeError:
+            rol = None
+        permitidos = ESTADOS_POR_ROL.get(rol, ())
+
+    if nuevo_estado not in permitidos:
+        messages.error(request, f'No tenés permiso para marcar un ítem como "{nuevo_estado}".')
+        return redirect('inicio')
+
     FlujoEstado.objects.create(pedido_detalle=detalle, estado=nuevo_estado)
+    if nuevo_estado == 'Entregado':
+        return redirect('tomar_pedido', pedido_id=detalle.pedido_id)
     return redirect('vista_cocina')
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def confirmar_pedido(request, pedido_id):
     """
-    Vuelve al salón desde la comanda. Si el pedido está vacío, lo elimina y libera la mesa.
+    Vuelve al salón desde la comanda. Si el pedido está vacío, lo elimina.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET (redirect)
     Retorna: redirect a salon
-    Caso pedido vacío: borra el Pedido y pone la mesa en estado Libre.
+    Caso pedido vacío: borra el Pedido; la mesa queda en el estado que tenía
+    (abrir la comanda no la ocupa). Si figuraba Ocupada, vuelve a Libre.
     Caso pedido con ítems: solo navega al salón (pedido queda activo).
     """
     pedido = get_object_or_404(Pedido, id=pedido_id)
@@ -331,8 +431,9 @@ def confirmar_pedido(request, pedido_id):
     if not pedido.detalles.exists():
         mesa = pedido.mesa
         pedido.delete()
-        mesa.estado = 'Libre'
-        mesa.save()
+        if mesa.estado == 'Ocupada':
+            mesa.estado = 'Libre'
+            mesa.save()
 
     return redirect('salon')
 
@@ -533,8 +634,14 @@ def cobrar_pedido(request, pedido_id):
           aplica descuento, calcula IVA 10%, actualiza arqueo y pedido.
           Redirige a imprimir_factura tras cobro exitoso.
     Requiere: caja abierta (Arqueo) + CajaTimbrado Activo y vigente.
+    Un pedido sin ítems no se cobra (GET ni POST): redirige a la comanda, para no
+    emitir una factura de Gs. 0 que consume un número del timbrado.
     """
     pedido = get_object_or_404(Pedido, id=pedido_id, estado_pago='Pendiente')
+
+    if not pedido.detalles.exists():
+        messages.error(request, 'El pedido está vacío: agregá productos antes de cobrar.')
+        return redirect('tomar_pedido', pedido_id=pedido.id)
     detalles = pedido.detalles.all().select_related('producto').annotate(
         subtotal_linea=F('cantidad') * F('precio_historico')
     )
@@ -659,11 +766,12 @@ def cobrar_pedido(request, pedido_id):
 
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def buscar_clientes(request):
     """
     Endpoint AJAX de búsqueda de clientes (typeahead en cobrar.html).
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: GET — ?q=<texto> (mínimo 2 caracteres)
     Retorna: JsonResponse {"clientes": [{"id", "nombre", "ruc_ci"}]}
     Excluye al cliente genérico (RUC='0'). Máximo 10 resultados.
@@ -686,21 +794,64 @@ def buscar_clientes(request):
 # ──────────────────────────────────────────
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def marcar_sucia(request, mesa_id):
     """
     Marca una mesa como Sucia vía AJAX (requiere limpieza antes de usar).
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: POST (AJAX desde salon.html)
     Retorna: JsonResponse {"ok": true, "estado": "Sucia"}
+    Solo aplica a mesas Libres: cualquier otro estado devuelve 400 con
+    {"error": ...} sin modificar la mesa. Una Ocupada queda Sucia sola al
+    cobrarse; ensuciarla antes dejaba su pedido abierto sin forma de cobrarlo.
     GET retorna 405 Method Not Allowed.
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido'}, status=405)
     mesa = get_object_or_404(Mesa, id=mesa_id)
+    if mesa.estado != 'Libre':
+        return JsonResponse(
+            {'error': f'Solo se puede marcar sucia una mesa Libre (la mesa {mesa.numero_mesa} está {mesa.estado}).'},
+            status=400,
+        )
     mesa.estado = 'Sucia'
     mesa.save()
     return JsonResponse({'ok': True, 'estado': 'Sucia'})
+
+
+@login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
+def marcar_libre(request, mesa_id):
+    """
+    Marca una mesa Sucia como Libre vía AJAX, una vez limpia.
+
+    Roles: Mozo, Cajero, Administrador
+    Método: POST (AJAX desde salon.html)
+    Retorna: JsonResponse {"ok": true, "estado": "Libre"}
+    Solo aplica a mesas Sucias: cualquier otro estado devuelve 400 con
+    {"error": ...} sin modificar la mesa (una Ocupada tiene un pedido activo
+    y una Reservada se libera cancelando su reserva).
+    También devuelve 400 si la mesa tiene un pedido Pendiente con ítems, para no
+    liberar una mesa con la cuenta sin cobrar.
+    GET retorna 405 Method Not Allowed.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    mesa = get_object_or_404(Mesa, id=mesa_id)
+    if mesa.estado != 'Sucia':
+        return JsonResponse(
+            {'error': f'La mesa {mesa.numero_mesa} está {mesa.estado}, no Sucia.'},
+            status=400,
+        )
+    if Pedido.objects.filter(mesa=mesa, estado_pago='Pendiente', detalles__isnull=False).exists():
+        return JsonResponse(
+            {'error': f'La mesa {mesa.numero_mesa} tiene un pedido sin cobrar.'},
+            status=400,
+        )
+    mesa.estado = 'Libre'
+    mesa.save()
+    return JsonResponse({'ok': True, 'estado': 'Libre'})
 
 
 @login_required
@@ -733,11 +884,12 @@ def bloquear_mesa(request, mesa_id):
 # ──────────────────────────────────────────
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def actualizar_cantidad_ajax(request, pedido_id, detalle_id):
     """
     Edita la cantidad de un ítem del pedido vía AJAX.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: POST (fetch desde comanda.html)
     Retorna: JsonResponse {"total": "...", "items": [...con campo subtotal]}
     Restricción: solo permite editar ítems cuyo último FlujoEstado sea 'Pendiente'.
@@ -1190,10 +1342,14 @@ def crear_reservacion(request, mesa_id):
           crea la Reservacion y cambia el estado de la mesa a 'Reservada'.
           Redirige al salón tras crear la reserva.
     Mesas Ocupadas o Reservadas: redirige al salón con mensaje de error.
+    Mesas con un pedido Pendiente con ítems (cuenta sin cobrar): ídem.
     """
     mesa = get_object_or_404(Mesa, id=mesa_id)
     if mesa.estado not in ('Libre', 'Sucia'):
         messages.error(request, f'La mesa {mesa.numero_mesa} no está disponible para reservar.')
+        return redirect('salon')
+    if Pedido.objects.filter(mesa=mesa, estado_pago='Pendiente', detalles__isnull=False).exists():
+        messages.error(request, f'La mesa {mesa.numero_mesa} tiene un pedido sin cobrar.')
         return redirect('salon')
 
     if request.method == 'POST':
@@ -1771,11 +1927,12 @@ def error_500(request):
 
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def guardar_nota_ajax(request, detalle_id):
     """
     Guarda la nota/observación de un PedidoDetalle.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: POST
     Retorna: JSON {ok}
     """
@@ -1788,11 +1945,12 @@ def guardar_nota_ajax(request, detalle_id):
 
 
 @login_required
+@requiere_rol('Mozo', 'Cajero', 'Administrador')
 def transferir_pedido(request, pedido_id):
     """
     Transfiere un pedido a otra mesa libre.
 
-    Roles: todos los autenticados
+    Roles: Mozo, Cajero, Administrador
     Método: POST
     Retorna: JSON {ok, error}
     """
@@ -1813,12 +1971,15 @@ def transferir_pedido(request, pedido_id):
     if nueva_mesa == pedido.mesa:
         return JsonResponse({'error': 'La mesa de destino es la misma'}, status=400)
 
+    # Un pedido vacío no ocupa mesas: solo se mueve (ver sincronizar_estado_mesa)
     mesa_anterior = pedido.mesa
-    mesa_anterior.estado = 'Libre'
-    mesa_anterior.save()
+    if mesa_anterior.estado == 'Ocupada':
+        mesa_anterior.estado = 'Libre'
+        mesa_anterior.save()
 
-    nueva_mesa.estado = 'Ocupada'
-    nueva_mesa.save()
+    if pedido.detalles.exists():
+        nueva_mesa.estado = 'Ocupada'
+        nueva_mesa.save()
 
     pedido.mesa = nueva_mesa
     pedido.save()

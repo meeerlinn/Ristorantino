@@ -10,6 +10,13 @@
     --reservada: #f7d177;
     --sucia: #b5b5b5;
     --white: #ffffff;
+
+    /* Usadas en templates (estilos inline y bloques extra_css) */
+    --japandi-accent: #4a7c59;  /* Verde salvia oscuro: selección activa / acento sobre fondo claro (contraste AA con blanco) */
+    --japandi-text: #2d2d2d;    /* Texto principal (= --japandi-dark) */
+    --japandi-border: #e0ddd6;  /* Bordes suaves de inputs y chips */
+    --japandi-surface: #ffffff; /* Fondo de inputs y tarjetas */
+    --japandi-muted: #7a6f66;   /* Texto secundario cálido */
 }
 
 body { 
@@ -313,9 +320,12 @@ body {
    ========================================== */
 .comanda-wrapper {
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: minmax(0, 1fr) 400px;
     gap: 20px;
-    height: calc(100vh - 160px);
+    /* Alto = pantalla menos el encabezado real: comanda.html lo mide (el menú ocupa
+       1 a 3 renglones según ancho y rol, y puede haber mensajes) y lo guarda en
+       --comanda-alto. El calc es el valor anterior, por si el JS no corre. */
+    height: var(--comanda-alto, calc(100vh - 160px));
     overflow: hidden;
 }
 
@@ -327,6 +337,9 @@ body {
     padding: 20px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.03);
     overflow-y: auto;
+    /* La grilla de productos (.row de Bootstrap) sobresale 8px por lado: sin
+       esto aparecía una barra de scroll horizontal en todos los tamaños */
+    overflow-x: hidden;
 }
 
 .categories-container {
@@ -335,6 +348,9 @@ body {
     overflow-x: auto;
     padding-bottom: 10px;
     scrollbar-width: thin;
+    /* Al tener scroll propio, dentro de una columna flex llena de productos se
+       aplastaba hasta desaparecer (pasaba en PC con ~20 productos y en tablet) */
+    flex-shrink: 0;
 }
 
 .cat-btn {
@@ -387,6 +403,34 @@ body {
     margin-top: auto;
     padding-top: 20px;
     border-top: 2px dashed var(--japandi-bg);
+    flex-shrink: 0;
+}
+
+/* Con muchos ítems, la lista del resumen se desplaza sola y el total con sus
+   botones (Ir a Cobrar / Volver al Salón) queda siempre visible abajo */
+.comanda-column #cart-items {
+    min-height: 0;
+    overflow-y: auto;
+}
+/* Bloque precio + quitar de cada ítem: "Gs. 10.000" en un solo renglón (vale
+   para el HTML del servidor y el que arma updateSummary() en comanda.html) */
+.cart-item > :last-child { white-space: nowrap; flex-shrink: 0; }
+/* Nombre + nota pueden angostarse (el input de nota tiene ancho mínimo propio y,
+   sin esto, desbordaba el resumen de 300px en tablet vertical) */
+.cart-item > :first-child { min-width: 0; }
+
+/* ── Comanda en tablet (en PC, ≥1200px, no cambia nada) ── */
+@media (max-width: 1199.98px) {          /* tablet horizontal / laptop chica */
+    .comanda-wrapper { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+@media (max-width: 991.98px) {           /* tablet vertical */
+    .comanda-wrapper { grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; }
+    aside.comanda-column { padding: 16px; }
+    .cat-btn { padding: 10px 18px; }
+}
+@media (max-width: 767.98px) {           /* tablet chica / teléfono: una columna */
+    .comanda-wrapper { grid-template-columns: 1fr; height: auto; overflow: visible; }
+    .comanda-column { overflow: visible; }
 }
 
 .product-card-img {

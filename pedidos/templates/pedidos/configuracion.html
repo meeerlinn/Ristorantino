@@ -10,15 +10,6 @@
         <p class="text-muted small mt-1">Estos datos aparecen en las facturas y en el sistema.</p>
     </div>
 
-    {% if messages %}
-    {% for msg in messages %}
-    <div class="alert alert-{{ msg.tags }} alert-dismissible fade show rounded-3 mb-3" role="alert">
-        {{ msg }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-    {% endfor %}
-    {% endif %}
-
     <div class="card border-0 shadow-sm rounded-4">
         <div class="card-body p-4">
             <form method="post">
